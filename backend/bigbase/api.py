@@ -38,7 +38,7 @@ class StepUpOTP(BaseModel):
     code:str=Field(pattern=r'^[0-9]{6}$')
 
 
-def create_app(root=None,testing=False):
+def create_app(root=None,testing=False,*,canonical_reads=None):
     if not testing and os.environ.get('BIGBASE_ENV','development')!='development':
         raise RuntimeError('Este adaptador é de desenvolvimento; configure o backend definitivo antes de produção.')
     root=Path(root or os.environ.get('BIGBASE_DATA','var')).resolve();root.mkdir(parents=True,exist_ok=True);root.chmod(0o700)
@@ -61,10 +61,13 @@ def create_app(root=None,testing=False):
                 await run_in_threadpool(security.cleanup_rotation_receipts)
                 await asyncio.sleep(60)
         receipt_cleaner=asyncio.create_task(rotation_housekeeping())
+        maintenance_tasks=[cleaner,receipt_cleaner]
+        if canonical_reads is not None:
+            maintenance_tasks.append(asyncio.create_task(maintain_canonical_cursors(canonical_reads),name='canonical-cursor-cleanup'))
         try:yield
         finally:
-            for task in (cleaner,receipt_cleaner):task.cancel()
-            for task in (cleaner,receipt_cleaner):
+            for task in maintenance_tasks:task.cancel()
+            for task in maintenance_tasks:
                 try:await task
                 except asyncio.CancelledError:pass
             executor.shutdown(wait=True)
@@ -144,6 +147,8 @@ def create_app(root=None,testing=False):
         e=store.get(c,'entity',id)
         if not e or (collection is not None and (collection not in {'people','companies'} or e['entity_type']!=('person' if collection=='people' else 'company'))):raise HTTPException(404,'Cadastro não encontrado')
         return project(e)
+    from .canonical_http import install_canonical_reads, maintain_canonical_cursors
+    install_canonical_reads(app, canonical_reads, store=store, security=security, auth=auth, audit=audit)
     @app.get('/api/v1/health')
     def health():return {'status':'ok','environment':'isolated-development','production_connected':False}
     @app.post('/api/v1/auth/activate')

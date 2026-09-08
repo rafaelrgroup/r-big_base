@@ -28,6 +28,7 @@ import {
 import QRCode from "qrcode";
 import { SortEditor, initialSort, sortForServer, legacySortFields, type SortSelection, type SortField } from "./SortEditor";
 import { ImportsPanel } from "./ImportsPanel";
+import { CanonicalPanel } from "./CanonicalPanel";
 import { PhoneNormalizationDetails } from "./PhoneNormalizationDetails";
 import {
   parseApiJson,
@@ -1085,6 +1086,7 @@ function App() {
       companies: "Empresas",
       bulk: "Consulta em massa",
       imports: "Importações",
+      canonical: "Consulta canônica",
       saved: "Pesquisas salvas",
       admin: "Administração",
       keys: "Minhas chaves",
@@ -1112,6 +1114,7 @@ function App() {
             ["saved", Search, "Pesquisas salvas"],
             ["bulk", FileSpreadsheet, "Consulta em massa"],
             ["imports", Layers3, "Importações"],
+            ["canonical", Database, "Consulta canônica"],
             ["keys", KeyRound, "Minhas chaves"],
             ["audit", History, "Auditoria"],
             ["admin", ShieldCheck, "Administração"],
@@ -1960,6 +1963,7 @@ function App() {
               canEnrich={can("enrich")}
             />
           )}
+          {view === "canonical" && <CanonicalPanel key={session.user.id} api={api} />}
           {view === "audit" && (
             <section className="card">
               <div className="table-wrap">

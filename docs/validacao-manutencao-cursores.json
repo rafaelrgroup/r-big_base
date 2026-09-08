@@ -1,0 +1,28 @@
+{
+  "status": "passed",
+  "pytest_exit_code": 0,
+  "hashes_match": true,
+  "source_files_sha256": {
+    "backend/bigbase/api.py": "cd5a0dbaa74609a86b59d6c3632feafd55e119af60f5a88fdbda32cb9e9b75d5",
+    "backend/bigbase/canonical_http.py": "2ecda2757b5080ebf17ee1b912539faa182c005da2f8ed72dfdd4e1e62cf237a",
+    "backend/tests/test_canonical_cursor_maintenance.py": "4c51cff2bfecb4ded17b91f0fefbf1761cdfd38b144f5e17c6479a465fdc1973"
+  },
+  "user": "bigbase",
+  "services_restarted": false,
+  "finished_at": "2026-09-08T23:28:51.277691+00:00",
+  "validation_scope": "18 canonical HTTP tests plus 8 application cursor maintenance lifecycle tests on synthetic PostgreSQL 18; full suite was not repeated",
+  "backend_subset": {
+    "tests": 26,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "full_previous_suite": "validacao-leituras-canonicas.json",
+  "changed_since_previous_full_suite": [
+    "backend/bigbase/api.py",
+    "backend/bigbase/canonical_http.py"
+  ],
+  "browser_sources_unchanged": true,
+  "project_complete": false,
+  "migrated_real_records": 0
+}

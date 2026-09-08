@@ -635,6 +635,18 @@ class CanonicalStore:
                     by_item[str(field["item_id"])]["flags"].append(current)
             return {"id":str(owner),"entity_type":row["entity_type"],"version":row["version"],"items":list(by_item.values())}
 
+    def entity_metadata(self, owner_id: str) -> dict:
+        """Bounded metadata and initial collection cursors at one committed cut."""
+        owner = self._page_arguments(owner_id, 1, "asc", {})
+        with self.connection() as c:
+            frontier = self._read_frontier(c, owner, "items", {"kind": None}, "asc", None)
+            row = c.execute("SELECT entity_type FROM entities WHERE owner_id=%s", (owner,)).fetchone()
+            result = {"id": str(owner), "entity_type": row["entity_type"], "version": frontier["cut_version"]}
+            for kind in ("items", "fields", "history"):
+                filters = {"kind": None} if kind == "items" else {"item_id": None, "field_path": None, "source_id": None, "dimension": None}
+                result[kind] = {"included": False, "cursor": self._issue_cursor(c, owner, kind, filters, "asc", frontier, None)}
+            return result
+
     def lookup_identity(self, *, source_id: str | None = None, source_record_id: str | None = None,
                         document_type: str | None = None, country: str | None = None, value: str | None = None) -> str | None:
         """Exact indexed lookup of an externally validated/normalized identity."""

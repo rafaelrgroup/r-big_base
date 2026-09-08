@@ -1277,3 +1277,12 @@ input[type="file"] {
   .sort-row { border-bottom: 1px solid var(--border); padding-bottom: 12px; }
   .sort-row label { flex-basis: 100%; }
 }
+
+.canonical-panel { padding: 24px; min-width: 0; }
+.canonical-panel form, .canonical-panel article { margin: 16px 0; }
+.canonical-panel article { border-top: 1px solid var(--border); padding: 16px 0; }
+.canonical-panel label { display: flex; flex-direction: column; gap: 6px; }
+.canonical-panel dd, .canonical-panel h4, .canonical-id { overflow-wrap: anywhere; white-space: pre-wrap; }
+.canonical-panel dd { margin: 4px 0 12px; }
+.canonical-panel dt { font-weight: 600; }
+.canonical-panel input, .canonical-panel select { min-width: 0; max-width: 100%; }
