@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
-# Extract signed PGDG Debian packages into this project's private test runtime.
-# No apt source, package, cluster or service is installed globally.
+# Default: extract signed PGDG Debian packages into a private test runtime.
+# --runtime system: register already-installed PostgreSQL18 binaries; no download.
+# Neither mode installs an apt source/package, initializes a global cluster or
+# starts a global service. Run as the unprivileged development account.
 set -euo pipefail
 umask 077
 pg_project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 pg_runtime_root="$pg_project_root/var/postgres-runtime"
-pg_arch=$(dpkg --print-architecture)
+pg_runtime_mode=download
+if [[ $# == 1 && $1 == --help ]]; then
+  printf 'Uso: bash scripts/prepare-postgres-test.sh [--runtime download|system]\n'
+  printf 'system usa /usr/lib/postgresql/18/bin já instalado; download exige Debian12 amd64.\n'
+  exit 0
+fi
+if [[ $# != 0 ]]; then
+  if [[ $# != 2 || $1 != --runtime || ( $2 != download && $2 != system ) ]]; then
+    printf 'Argumentos inválidos; use --runtime download ou --runtime system.\n' >&2; exit 1
+  fi
+  pg_runtime_mode=$2
+fi
 if [[ $(id -u) == 0 ]]; then printf 'Execute como usuário normal, sem sudo.\n' >&2; exit 1; fi
+if [[ $pg_runtime_mode == system ]]; then
+  exec python3 "$pg_project_root/scripts/run-postgres-tests.py" --prepare-system-runtime
+fi
+pg_arch=$(dpkg --print-architecture)
 if [[ $pg_arch != amd64 || $(. /etc/os-release; printf '%s' "$VERSION_CODENAME") != bookworm ]]; then
   printf 'Este runtime isolado foi definido para Debian 12 bookworm amd64.\n' >&2; exit 1
 fi

@@ -41,3 +41,15 @@ Nenhuma restauração deve ativar serviços automaticamente, reutilizar endereç
 A aplicação pode transferir a mesma tarefa para outro host conectado que tenha o mesmo repositório Git com o trabalho salvo. Essa ação é feita pelo usuário no seletor de localização da tarefa, após preparar o destino; não é uma transferência automática dos bancos ou arquivos privados. Consulte o [procedimento oficial de transferência entre hosts](https://learn.chatgpt.com/docs/remote-connections#hand-off-a-chat-between-hosts).
 
 Também é possível abrir uma nova tarefa no checkout do novo servidor. Ela deve ler `AGENTS.md`, o plano completo, `docs/IMPLEMENTACAO.md` e este documento, conferir os recibos e checkpoints privados disponíveis e continuar a partir das pendências verificadas. A retomada não deve depender da memória desta conversa, presumir uma migração concluída ou ativar o monitor automaticamente.
+
+## PostgreSQL de teste em outro sistema
+
+Em um Linux com PostgreSQL 18 instalado pelo administrador, prepare o fixture como o usuário normal responsável pelo projeto:
+
+```bash
+python3 scripts/run-postgres-tests.py --runtime system --start-only
+```
+
+Esse modo usa os executáveis em `/usr/lib/postgresql/18/bin` e cria somente o banco sintético privado em `var/postgres-test`, com socket Unix e porta 18769. Não conecta ao cluster global, não instala pacotes e não recebe dados reais. O usuário precisa de um gerenciador de serviços systemd de usuário disponível. Depois da primeira preparação, o modo fica vinculado ao fixture; `--status`, `--stop` e execuções posteriores reutilizam essa escolha. Mudança dos executáveis ou tentativa de trocar o modo de um fixture existente exigem inspeção, sem recriação ou remoção automática.
+
+Recrie as dependências Python e Node a partir dos arquivos fixados, instale o Chromium da versão local do Playwright e execute `scripts/run-verification.py` no novo host. Preserve o relatório dessa plataforma; resultados do servidor anterior não substituem essa validação. O modo padrão de download privado continua restrito ao Debian 12 amd64.
