@@ -16,7 +16,7 @@ O pacote privado usa GPG com AES256, permissões restritas e senha solicitada no
 
 ## Captura privada no Ubuntu
 
-O operador fornece o apelido SSH já configurado e uma pasta pessoal para `baixar-handoff-ubuntu.sh`. O procedimento copia o verificador, recebe um fluxo por SSH, cifra localmente, pede novamente a senha e confere cada arquivo sem extrair seu conteúdo. Somente após todas as verificações grava o recibo e o envia ao servidor. A instrução operacional com os caminhos da instalação fica fora do repositório público.
+O operador fornece o apelido SSH já configurado e uma pasta pessoal para `baixar-handoff-ubuntu.sh`. O procedimento copia o verificador, confere primeiro a leitura dos arquivos no servidor e aguarda a criação e repetição da senha no terminal. Só depois recebe um fluxo por SSH, cifra localmente e confere automaticamente cada arquivo sem extrair seu conteúdo. A senha trafega para o cifrador somente por um canal local de memória, separado do conteúdo do pacote; não entra em argumentos, variáveis de ambiente ou arquivo de senha. Somente após todas as verificações grava o recibo e o envia ao servidor. A instrução operacional com os caminhos da instalação fica fora do repositório público.
 
 O emissor faz uma cópia online consistente do SQLite e confere sua estrutura; a chave de cifragem e o arquivo de primeiro acesso acompanham essa cópia somente no pacote privado. Não redefine usuários, senhas ou OTP. Os arquivos estáticos são conferidos antes e depois da captura; uma alteração concorrente exige repetir o procedimento. O pacote representa esse instante: alterações posteriores exigem nova captura.
 
