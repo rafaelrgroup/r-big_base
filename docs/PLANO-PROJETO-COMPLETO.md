@@ -9,7 +9,7 @@ Entregar um cadastro unificado de pessoas e empresas, consultável por painel re
 Decisões do usuário:
 
 - Infraestrutura nova, preservando o servidor atual durante a transição.
-- Meta inicial de teste: 100 requisições por segundo, considerando uma mistura definida de consultas e atualizações.
+- Meta inicial de teste: 50 requisições por segundo (revisada pelo proprietário em 08/09/2026), considerando uma mistura definida de consultas e atualizações.
 - Administrador cria usuários e define permissões individuais.
 - TOTP compatível com Google Authenticator obrigatório para administradores e usuários no painel, incluindo configuração no primeiro acesso.
 - Usuário quer a observação mais recente prevalecendo em conflitos, com histórico.
@@ -203,11 +203,11 @@ Limites iniciais: corpo síncrono 2 MiB; até 100 itens de enriquecimento por ch
 
 Rate limit em todas as rotas, incluindo login, OTP, painel, API, polling e downloads. Proteção por IP confiável na entrada e limite distribuído por usuário/integração, chave e categoria de operação. Múltiplas chaves do mesmo usuário compartilham também o teto agregado. Validar headers de proxy somente da infraestrutura conhecida.
 
-Padrões iniciais configuráveis pelo admin: leituras 20/s por integração com burst 40; escritas 5/s com burst 10; buscas pesadas 2/s; até dois trabalhos pesados simultâneos e cinco novas exportações por minuto. Limite agregado de proteção inicial: 150 solicitações/s, mantendo a meta de 100/s como capacidade medida, não quota garantida a cada usuário. Custos de consultas pesadas e exportações não equivalem a uma consulta exata.
+Padrões iniciais configuráveis pelo admin: leituras 20/s por integração com burst 40; escritas 5/s com burst 10; buscas pesadas 2/s; até dois trabalhos pesados simultâneos e cinco novas exportações por minuto. Limite agregado de proteção inicial: 50 solicitações/s, mantendo a meta de 50/s como capacidade medida, não quota garantida a cada usuário. Custos de consultas pesadas e exportações não equivalem a uma consulta exata.
 
 Token bucket atômico no Redis; 429 inclui Retry-After. Falha do coordenador de limites retorna 503 temporário nas APIs protegidas, sem liberar tráfego ilimitado. Pool de conexões limitado globalmente, filas limitadas, backpressure, deadlines e circuit breakers evitam saturação. Tarefas CPU-intensivas e importações não bloqueiam os processos HTTP.
 
-Metas de homologação, medidas na aplicação: p95 até 300 ms para localização exata; p95 até 1 segundo para primeira página de buscas combinadas indexadas; p99 até 3 segundos, na carga mista de 100/s definida abaixo. Atualizações simples p95 até 500 ms; busca refletindo alteração p95 até 5 s. São metas a comprovar em hardware dimensionado, não promessa de que qualquer consulta, exportação ou retorno de milhões de fichas será instantâneo.
+Metas de homologação, medidas na aplicação: p95 até 300 ms para localização exata; p95 até 1 segundo para primeira página de buscas combinadas indexadas; p99 até 3 segundos, na carga mista de 50/s definida abaixo. Atualizações simples p95 até 500 ms; busca refletindo alteração p95 até 5 s. São metas a comprovar em hardware dimensionado, não promessa de que qualquer consulta, exportação ou retorno de milhões de fichas será instantâneo.
 
 Carga de referência: 50% consultas exatas, 35% buscas combinadas e 15% enriquecimentos/validações, com pelo menos 100 clientes simultâneos e distribuições diversas de chaves. Testar cache quente e frio, falhas de nó, dados pouco seletivos, altos números de contatos e tarefas de importação simultâneas. Dimensionar crescimento a partir de latência, throughput, filas e utilização reais.
 
@@ -261,7 +261,7 @@ Testes obrigatórios:
 - Limite agregado entre processos/chaves, Redis indisponível, falha de worker e retomada idempotente de trabalhos.
 - Falha entre cadastro e publicação, outbox acumulado, reindexação, nó de busca indisponível e recuperação sem perda.
 - Responsividade, acessibilidade e ausência de dados pessoais no cache offline.
-- Carga mista de 100/s, pelo menos uma hora estável e teste prolongado de oito horas; relatório de p50/p95/p99, erros, throughput e filas.
+- Carga mista de 50/s, pelo menos uma hora estável e teste prolongado de oito horas; relatório de p50/p95/p99, erros, throughput e filas.
 
 Entregar banco/migrações, importadores, API/OpenAPI, painel/PWA, testes, ambiente reproduzível, observabilidade e runbooks de backup/restauração/failover. Alertas para disco, falha/atraso de backup, lag da busca, filas, erros e latência. Meta operacional inicial: RPO zero para escritas confirmadas sob falha de um nó com réplica síncrona saudável; objetivo de recuperação até uma hora em cenário de falha de nó, a demonstrar em ensaio. Recuperação de desastre total por centenas de GB de backup terá tempo medido separado.
 

@@ -2,7 +2,7 @@
 
 `backend/bigbase/migration_preflight.py` avalia **somente metadados**, sem ler arquivos, conectar bancos, alterar índices ou carregar cadastros. A função é `assess_migration(backup_manifest, restore_report, destination_info, pilot=None, source_info=None)`. O único contexto externo consultado é o relógio UTC para rejeitar datas futuras. Os dicionários de entrada permanecem intactos.
 
-O plano operacional completo, mantido no diretório privado definido para a implantação, continua obrigatório. Consulte também a matriz pública em [IMPLEMENTACAO.md](IMPLEMENTACAO.md). `ready` aprova as pré-condições da etapa indicada; não homologa o projeto, a migração completa, a troca de tráfego, replicação/failover ou as metas de 100 requisições/s. O retorno mantém `production_cutover_approved: false`. Ausência de destino bloqueia a carga real e mantém `development_allowed: true`.
+O plano operacional completo, mantido no diretório privado definido para a implantação, continua obrigatório. Consulte também a matriz pública em [IMPLEMENTACAO.md](IMPLEMENTACAO.md). `ready` aprova as pré-condições da etapa indicada; não homologa o projeto, a migração completa, a troca de tráfego, replicação/failover ou as metas de 50 requisições/s. O retorno mantém `production_cutover_approved: false`. Ausência de destino bloqueia a carga real e mantém `development_allowed: true`.
 
 ## Duas etapas sem dependência circular
 

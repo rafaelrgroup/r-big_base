@@ -25,7 +25,7 @@ Atualizada em 08/09/2026. Restauração do backup original aprovada em ambiente 
 | Migração | Adaptadores puros para os140 caminhos inventariados das duas fontes; átomos/containers, normalização conservadora e semântica desconhecida preservada; leitor JSONL/PIT; CLI com guardião de destino/capacidade; piloto limitado | Novos contratos em `ADAPTADORES-MIGRACAO.md`, `EXECUTOR-MIGRACAO.md` e `PREFLIGHT-MIGRACAO.md`; pipeline exercitado no PostgreSQL sintético. Conferência por releitura do destino implementada e testada; finalização depende de prova vinculada ao destino/fonte/versões. Nenhum registro real migrado; resolução de conflitos/coleções codificadas/registros grandes, piloto representativo e capacidade real pendentes |
 | Banco definitivo / outbox / busca | Repositório PostgreSQL18 com64 partições, operações/observações imutáveis, identidade documental, outbox/leases e checkpoint transacional; projeção ES versionada com filtros correlacionados; paginação do histórico por corte de versão | Testes PG reais com dados fictícios e testes HTTP simulados da busca; contratos em `CANONICAL-STORE.md` e `PROJECAO-BUSCA.md`. API/painel continuam no SQLite local; integração dos serviços ao canônico, ES real, papéis de produção, esquema de atualizações e homologação de escala ainda pendentes |
 | Backup/restauração | Backup original e restauração isolada aprovados | Manifestos, contagens, mapeamentos, consultas e configuração conferidos; provas no pacote privado. O novo estado administrativo/projeto requer cópia complementar conforme RETOMADA.md |
-| Desempenho e disponibilidade | Metas no plano | 100 req/s, 1 h/8 h, replicação, failover, RPO/RTO e reconciliação integral não medidos |
+| Desempenho e disponibilidade | Metas no plano | 50 req/s, 1 h/8 h, replicação, failover, RPO/RTO e reconciliação integral não medidos |
 
 ## Evidências e limites
 
@@ -47,3 +47,5 @@ O plano completo continua obrigatório; esta matriz registra o estado real, sem 
 ## Transferência em preparação
 
 O código será mantido no repositório indicado pelo proprietário. O novo servidor está pendente de disponibilização. Seguir [RETOMADA.md](RETOMADA.md), [INFRAESTRUTURA.md](INFRAESTRUTURA.md) e o [plano completo](PLANO-PROJETO-COMPLETO.md). Ao concluir todos os requisitos e a migração, lembrar o proprietário de tornar o repositório privado.
+
+A meta inicial de capacidade foi revisada pelo proprietário para **50 requisições por segundo**, sem reduzir preservação de dados, testes de falha, rastreabilidade ou completude. O perfil inicial econômico está em INFRAESTRUTURA.md; a capacidade final permanece dependente do piloto. Isso atualiza o planejamento, não declara um novo limite já homologado no serviço em execução.

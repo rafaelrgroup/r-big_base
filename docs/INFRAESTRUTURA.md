@@ -4,16 +4,32 @@ Revisão: 08/09/2026. Fontes oficiais consultadas nesta data. Este documento ori
 
 ## Recomendação para contratar agora
 
-Para a primeira máquina, recomendo **256 GB de RAM, 32–64 vCPU e SSD persistente expansível**, com **4–8 TB úteis inicialmente**. Se a contratação for de servidor físico com expansão mais difícil, prefiro **32 núcleos físicos, 256 GB ECC e aproximadamente 8 TB úteis em NVMe empresarial redundante**. Em ambos os casos, o contrato deve permitir ampliar armazenamento e separar banco, busca e trabalhadores em outras máquinas.
+Para começar com menor investimento e concorrência controlada, a referência é **128 GB de RAM, 16–32 vCPU e 4 TB úteis de SSD persistente expansível**. O perfil de **256 GB, 32–64 vCPU e 4–8 TB úteis** continua como alternativa com maior folga para cache, ingestão, indexação e exportações simultâneas; 256 GB não é um requisito mínimo demonstrado. Em ambos os casos, o contrato deve permitir ampliar armazenamento e separar banco, busca e trabalhadores em outras máquinas.
 
-Essa é uma hipótese conservadora para instalar os serviços definitivos, executar o piloto representativo e medir a configuração inicial. **Não há evidência de que 4 TB, 8 TB ou esse número de processadores comporte toda a base consolidada ou alcance 100 requisições/s.** A liberação da importação integral depende das medições descritas abaixo. Contratar uma máquina única também não atende à alta disponibilidade prevista no plano.
+Essa é uma hipótese conservadora para instalar os serviços definitivos, executar o piloto representativo e medir a configuração inicial. **Não há evidência de que 4 TB, 8 TB ou esse número de processadores comporte toda a base consolidada ou alcance 50 requisições/s.** A liberação da importação integral depende das medições descritas abaixo. Contratar uma máquina única também não atende à alta disponibilidade prevista no plano.
+
+### Perfil econômico e menor concorrência
+
+**50 usuários ou acessos simultâneos não equivalem a 50 requisições por segundo.** Usuários podem estar lendo a tela, fazer várias chamadas ou iniciar tarefas pesadas; requisições realmente em andamento também ocupam recursos por tempos diferentes. O dimensionamento precisa combinar taxa de chegada, duração e tipo das operações. Reduzir concorrência pode reduzir CPU, memória de execução e velocidade necessária da carga, mas não reduz proporcionalmente o armazenamento dos mesmos dados e de seu histórico.
+
+| Perfil | Configuração de referência | Limite da recomendação |
+|---|---|---|
+| Piloto econômico | 128 GB, 16–32 vCPU, 4 TB úteis de SSD persistente expansível | Opção inicial para medir a base com trabalhos pesados controlados; capacidade integral e latência ainda precisam ser comprovadas |
+| Maior folga | 256 GB, 32–64 vCPU, 4–8 TB úteis expansíveis | Maior orçamento de cache e processamento concorrente; não garante 50 requisições/s nem dispensa o piloto |
+| Piloto muito limitado | 64 GB, com lotes pequenos e forte limite de concorrência | Pode servir à instalação e primeiras medições; não certifica carga de 100 milhões de registros, da base completa ou da meta de desempenho |
+
+No perfil de 128 GB, começar com **um trabalho pesado de importação ou exportação por vez**, mantendo filas separadas e a projeção da busca com concorrência pequena e controlada. Reservar capacidade para consultas interativas, limitar pools do banco e memória por trabalhador, e manter checkpoints para reduzir ou pausar a carga sem perder progresso. Aumentar concorrência somente depois de medir latência, uso de RAM, disco, WAL e atraso da busca. Esse perfil aceita que ingestão e exportações levem mais tempo.
+
+A opção de 64 GB é apropriada apenas se a economia justificar um piloto mais restrito e a expansão estiver disponível antes de avançar. Não é necessário contratar toda a capacidade projetada de uma vez: iniciar limitado, medir e ampliar evita usar uma estimativa não comprovada como obrigação de compra. O usuário esclareceu em 08/09/2026 que a necessidade inicial é de **até 50 requisições por segundo**; essa passa a ser a meta de dimensionamento e homologação. A quantidade de clientes simultâneos é uma dimensão separada do ensaio, e os requisitos de preservação, disponibilidade e latência permanecem.
+
+### Características da contratação
 
 | Item | Configuração inicial proposta | Critério de contratação |
 |---|---|---|
-| CPU | 32–64 vCPU x86_64; em servidor físico, preferencialmente 32 núcleos físicos | CPU sustentada, sem depender de créditos de burst; identificar núcleos e threads separadamente |
-| RAM | 256 GB; ECC em servidor físico | Expansível ou máquina substituível por outra maior; 128 GB é alternativa para piloto limitado, sem compromisso de carga completa |
-| Dados | 4–8 TB úteis de SSD persistente; preferência de cerca de 8 TB no físico | Informar capacidade depois da redundância, latência, IOPS, throughput e possibilidade de expansão |
-| Discos físicos | Exemplo: 4 × 3,84 TB NVMe empresarial em RAID10 | Aproximadamente 7,68 TB decimais úteis antes do filesystem; exigir proteção contra perda de energia, especificação de endurance e monitoramento de desgaste |
+| CPU | 16–32 vCPU x86_64 no perfil econômico; 32–64 vCPU no perfil de maior folga | CPU sustentada; identificar núcleos e threads separadamente e distinguir limites de I/O contínuos de burst |
+| RAM | 128 GB ou 256 GB conforme o perfil; ECC em servidor físico | Expansível ou máquina substituível por outra maior |
+| Dados | 4 TB úteis de SSD persistente no perfil econômico; 4–8 TB no perfil de maior folga | Informar capacidade depois da redundância, latência, IOPS, throughput e possibilidade de expansão |
+| Discos físicos | Exemplo para o perfil de maior folga: 4 × 3,84 TB NVMe empresarial em RAID10 | Aproximadamente 7,68 TB decimais úteis antes do filesystem; exigir proteção contra perda de energia, especificação de endurance e monitoramento de desgaste |
 | Sistema | Linux x86_64; Ubuntu 24.04 LTS como opção inicial | PostgreSQL 18 por repositório oficial; fixar e validar a versão Elasticsearch 9 do projeto e sua matriz de suporte |
 | Volumes | Sistema separado; volumes próprios para PostgreSQL, busca e temporários; WAL isolável | Evitar que exportação ou reconstrução esgote o volume do cadastro oficial; separar volumes não cria tolerância a falha do host |
 | Rede | Rede privada de 10 Gbit/s como referência entre serviços; acesso externo de pelo menos 1 Gbit/s | Medir latência e throughput reais, considerar limites compartilhados e transferência de backup |
@@ -23,16 +39,17 @@ A preferência por SSD está alinhada à orientação da Elastic: indexação co
 
 O repositório oficial PostgreSQL oferece PostgreSQL 18 para Ubuntu 24.04. A combinação exata de Elasticsearch, sistema e JDK deve ser registrada no ambiente reproduzível e conferida na matriz do fabricante antes da instalação; este documento não declara homologação dessa combinação no destino ainda inexistente. [PostgreSQL para Ubuntu](https://www.postgresql.org/download/linux/ubuntu/), [Matriz de suporte Elastic](https://www.elastic.co/support/matrix)
 
-## Duas opções concretas na AWS
+## Opções concretas na AWS
 
 | Instância | CPU e RAM oficiais | Limite agregado EBS da instância | Uso proposto |
 |---|---|---|---|
+| `r7i.4xlarge` | 16 vCPU, 8 núcleos, 128 GiB | Base: 5.000 Mbit/s, 625 MB/s, 20.000 IOPS; pico: 10.000 Mbit/s, 1.250 MB/s, 40.000 IOPS | Piloto econômico; dimensionar a carga contínua pela base, sem contar com o pico sustentado |
 | `r7i.8xlarge` | 32 vCPU, 16 núcleos, 256 GiB | 10.000 Mbit/s; 1.250 MB/s; 40.000 IOPS | Piloto e primeira máquina priorizando memória |
 | `m7i.16xlarge` | 64 vCPU, 32 núcleos, 256 GiB | 20.000 Mbit/s; 2.500 MB/s; 80.000 IOPS | Maior folga inicial para ingestão, indexação e exportações concorrentes |
 
-As duas opções usam EBS e não incluem NVMe local de instance store. São exemplos de catálogo verificados, não afirmações de disponibilidade em determinada região ou de capacidade garantida do BIG BASE. A segunda é a referência caso se queira contratar agora uma única máquina com maior margem de processamento. Escolher a região, verificar quotas e disponibilidade antes da compra. [R7i — especificações EC2](https://docs.aws.amazon.com/ec2/latest/instancetypes/mo.html), [M7i — especificações EC2](https://docs.aws.amazon.com/ec2/latest/instancetypes/gp.html)
+As três opções usam EBS e não incluem NVMe local de instance store. São exemplos de catálogo verificados, não afirmações de disponibilidade em determinada região ou de capacidade garantida do BIG BASE. A `r7i.4xlarge` é a referência inicial de 128 GiB; a `m7i.16xlarge` oferece maior margem de processamento. Escolher a região, verificar quotas e disponibilidade antes da compra. [R7i — especificações EC2](https://docs.aws.amazon.com/ec2/latest/instancetypes/mo.html), [M7i — especificações EC2](https://docs.aws.amazon.com/ec2/latest/instancetypes/gp.html)
 
-Para começar o piloto, usar EBS SSD expansível com orçamento total inicial de **4 TiB de dados**, separado entre PostgreSQL, busca e temporários/WAL. Aumentar conforme as medições, inclusive antes de carregar mais registros; 8 TiB pode ser uma segunda reserva, não um teto de crescimento. O volume do sistema e o backup externo são adicionais. Como hipótese de ensaio, provisionar nos volumes principais **10.000–16.000 IOPS e 500 MiB/s por volume**, medindo a latência; a soma permanece limitada pela instância. Esses parâmetros são proposta de teste, não requisito mínimo provado, e não precisam ser contratados para volumes de logs ou arquivos frios.
+Para começar o piloto, usar EBS SSD expansível com orçamento total inicial de **4 TiB de dados**, separado entre PostgreSQL, busca e temporários/WAL. Aumentar conforme as medições, inclusive antes de carregar mais registros; 8 TiB pode ser uma segunda reserva, não um teto de crescimento. O volume do sistema e o backup externo são adicionais. No perfil econômico, o primeiro lote pequeno pode começar com o desempenho base do gp3 e subir por etapas se as métricas mostrarem limitação de I/O. Para o perfil de maior folga, **10.000–16.000 IOPS e 500 MiB/s por volume principal** são uma hipótese de ensaio mais intensa, não uma compra obrigatória. A soma do desempenho dos volumes permanece limitada pela instância; não provisionar como carga contínua valores que dependam de burst.
 
 O gp3 oferece base de 3.000 IOPS e 125 MiB/s; desempenho adicional é provisionado separadamente. A documentação atual informa máximos de 80.000 IOPS, 2.000 MiB/s e 64 TiB por volume, sujeitos às relações entre tamanho, IOPS e throughput; Outposts tem limites diferentes. Comprar mais capacidade sem ajustar desempenho não aumenta automaticamente esses valores. [Volumes gp3 — AWS](https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html)
 
@@ -44,7 +61,9 @@ Não foram cotados preços. O custo final depende da região, período contratad
 
 ## Divisão inicial de memória no servidor único
 
-Uma hipótese para a máquina de 256 GiB é a seguinte. Os valores incluem os respectivos orçamentos de cache e precisam ser verificados com métricas de memória do serviço; não são reservas que devam ser inteiramente preenchidas pelos processos.
+Para o perfil econômico de **128 GiB**, uma hipótese de orçamento é: PostgreSQL 48 GiB (`shared_buffers` inicial de 12 GiB), Elasticsearch 48 GiB (heap manual inicial de 16 GiB, se necessário), API/Redis/trabalhadores 16 GiB em conjunto e 16 GiB para sistema e margem. O orçamento de trabalhadores exige as filas e limites de concorrência descritos acima; a memória restante dos serviços inclui cache e operações, não deve ser consumida integralmente por heaps.
+
+Uma hipótese para a máquina de **256 GiB** é a seguinte. Os valores incluem os respectivos orçamentos de cache e precisam ser verificados com métricas de memória do serviço; não são reservas que devam ser inteiramente preenchidas pelos processos.
 
 | Grupo | Orçamento de referência | Ponto inicial a testar |
 |---|---|---|
@@ -100,8 +119,8 @@ Backups PostgreSQL devem combinar cópia base e arquivamento WAL para recuperaç
 7. Somar cópias previstas, espaço de reconstrução, temporários e retenção pertinente; acrescentar **50% de margem operacional**, conforme o plano. Mapear cada parcela ao volume que de fato a armazenará, inclusive réplicas e backups externos. WAL retido exige projeção pela taxa observada e janela de retenção, e não apenas multiplicação pelo número de pessoas.
 8. Só liberar a importação integral quando capacidade projetada, destino, prova de restauração e reconciliação estiverem aprovados pelo preflight. Durante a carga, revisar projeções por lote; pausar antes de consumir a reserva, sem apagar dados ou confirmações anteriores.
 
-O teste de capacidade funcional deve reproduzir **100 requisições/s**, com 50% de consultas exatas, 35% de buscas combinadas e 15% de enriquecimentos, pelo menos 100 clientes, exportações/importações simultâneas, cache frio/quente e cenários pouco seletivos. Metas do projeto: p95 de 300 ms para consulta exata, 1 s para primeira página combinada, 500 ms para atualização; p99 até 3 s; atraso de busca p95 até 5 s. Exigir uma hora estável e ensaio prolongado de oito horas, além de falha/recuperação. Comprar a configuração indicada não substitui esses testes.
+O teste de capacidade funcional deve reproduzir **50 requisições/s**, com 50% de consultas exatas, 35% de buscas combinadas e 15% de enriquecimentos, pelo menos 100 clientes, exportações/importações simultâneas, cache frio/quente e cenários pouco seletivos. Os clientes compartilham essa taxa agregada: 100 clientes não significam 100 requisições/s. Metas do projeto: p95 de 300 ms para consulta exata, 1 s para primeira página combinada, 500 ms para atualização; p99 até 3 s; atraso de busca p95 até 5 s. Exigir uma hora estável e ensaio prolongado de oito horas, além de falha/recuperação. Comprar a configuração indicada não substitui esses testes.
 
 ## Decisão operacional
 
-É possível contratar agora a máquina inicial de **256 GB e armazenamento SSD expansível**, iniciar a implantação e medir o piloto. A decisão de importar os 476 milhões de registros de origem e de trocar o tráfego será tomada com as medições reais e a topologia de disponibilidade prontas. O servidor antigo e o backup validado permanecem disponíveis durante essa transição. O sistema completo continua em implementação; a nova infraestrutura viabiliza as etapas reais ainda pendentes.
+É possível começar com **128 GB, 16–32 vCPU e 4 TB úteis de SSD persistente expansível**, controlar os trabalhos pesados e medir o piloto. **256 GB permanece uma opção de maior folga**, sobretudo para executar mais tarefas ao mesmo tempo. A decisão de importar os cerca de 476 milhões de registros de origem e de trocar o tráfego será tomada com as medições reais e a topologia de disponibilidade prontas. O servidor antigo e o backup validado permanecem disponíveis durante essa transição. O sistema completo continua em implementação; a nova infraestrutura viabiliza as etapas reais ainda pendentes.
