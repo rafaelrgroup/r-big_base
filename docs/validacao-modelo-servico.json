@@ -1,0 +1,7 @@
+{
+  "scope": "development-service-template-only",
+  "status": "passed",
+  "verification": "systemd-analyze verify with explicit user/path substitution; no unit installed",
+  "file": "infra/bigbase-development.service",
+  "sha256": "d2c1f87a3e65f6588d8bc56a4df835efe6b080f857904091eba4c22400fd7d60"
+}

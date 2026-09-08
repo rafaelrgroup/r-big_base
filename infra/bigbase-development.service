@@ -1,0 +1,27 @@
+# Development-only example. Adapt user/paths explicitly; do not install as production.
+[Unit]
+Description=BIG BASE isolated development panel
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=bigbase
+Group=bigbase
+WorkingDirectory=/opt/big-base
+Environment=BIGBASE_ENV=development
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/big-base/scripts/run-local.sh
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/big-base/var
+MemoryMax=384M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

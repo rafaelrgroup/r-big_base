@@ -1,0 +1,27 @@
+{
+  "name": "big-base-panel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 18766",
+    "build": "tsc -b && vite build"
+  },
+  "dependencies": {
+    "lossless-json": "4.3.1",
+    "lucide-react": "^0.468.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

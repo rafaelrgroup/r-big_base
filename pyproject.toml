@@ -1,0 +1,8 @@
+[project]
+name = "big-base"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["fastapi", "uvicorn", "pydantic", "argon2-cffi", "pyotp", "cryptography", "phonenumbers", "openpyxl", "python-multipart", "redis", "httpx==0.28.1", "psycopg[binary]==3.3.5"]
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+testpaths = ["backend/tests"]
