@@ -1,6 +1,6 @@
 # Matriz de implementação e validação
 
-Atualizada em 08/09/2026. Restauração do backup original aprovada em ambiente isolado; provas operacionais preservadas fora do Git. A migração real ainda exige servidor de destino, integração do banco definitivo e piloto. **Não é entrega integral e os testes sintéticos abaixo não homologam a carga real.**
+Atualizada em 08/09/2026. Restauração do backup original aprovada em ambiente isolado; provas operacionais preservadas fora do Git. O novo servidor recebeu uma cópia validada do projeto. A migração real ainda exige banco definitivo dedicado, integração dos serviços e piloto. **Não é entrega integral e os testes sintéticos abaixo não homologam a carga real.**
 
 | Requisito | Implementação verificável | Evidência / restante |
 |---|---|---|
@@ -46,6 +46,10 @@ O plano completo continua obrigatório; esta matriz registra o estado real, sem 
 
 ## Transferência em preparação
 
-O código será mantido no repositório indicado pelo proprietário. O novo servidor está pendente de disponibilização. Seguir [RETOMADA.md](RETOMADA.md), [INFRAESTRUTURA.md](INFRAESTRUTURA.md) e o [plano completo](PLANO-PROJETO-COMPLETO.md). Ao concluir todos os requisitos e a migração, lembrar o proprietário de tornar o repositório privado.
+O código está publicado no repositório indicado pelo proprietário. O novo servidor recebeu o projeto, o histórico Git e uma cópia privada conferida por hashes, preservando as contas existentes. O painel permanece acessível somente em loopback, como ambiente de desenvolvimento. Seguir [RETOMADA.md](RETOMADA.md), [INFRAESTRUTURA.md](INFRAESTRUTURA.md) e o [plano completo](PLANO-PROJETO-COMPLETO.md). Ao concluir todos os requisitos e a migração, lembrar o proprietário de tornar o repositório privado.
 
 A meta inicial de capacidade foi revisada pelo proprietário para **50 requisições por segundo**, sem reduzir preservação de dados, testes de falha, rastreabilidade ou completude. O perfil inicial econômico está em INFRAESTRUTURA.md; a capacidade final permanece dependente do piloto. Isso atualiza o planejamento, não declara um novo limite já homologado no serviço em execução.
+
+## Validação da instalação no novo servidor
+
+Em 08/09/2026, a instalação Ubuntu 26.04 / Python 3.14 / PostgreSQL 18.6 passou com **923 testes de backend sem falhas ou testes ignorados**, build, 14 verificações de precisão, nove de entrada de importação, seis de compatibilidade de ordenação e 22 grupos no navegador. Os hashes do código permaneceram iguais durante os testes e foram conferidos na origem. Veja [validacao-linode.json](validacao-linode.json). O novo modo explícito de PostgreSQL instalado mantém o fixture sintético privado e acrescenta 27 verificações de isolamento. Essa prova valida a instalação; a integração ao banco canônico, o piloto, a carga real e a migração continuam pendentes.
