@@ -40,12 +40,15 @@ def validate_synthetic_dsn(dsn):
 
 class CanonicalReads:
     def __init__(self, repository: CanonicalStore, *, expected_deployment_id: str,
-                 search_reader: CanonicalSearchReader | None = None):
+                 search_reader: CanonicalSearchReader | None = None, writes_enabled: bool = False):
         # Reject network/default destinations BEFORE opening a connection.
         validate_synthetic_dsn(repository.dsn)
         self.repository = repository
         self.deployment_id = str(UUID(expected_deployment_id))
         self.search_reader = search_reader
+        if type(writes_enabled) is not bool:
+            raise ValueError('CANONICAL_WRITES_REQUIRE_EXPLICIT_BOOLEAN')
+        self.writes_enabled = writes_enabled
         self.verify()
 
     def verify(self):
@@ -191,13 +194,17 @@ def install_canonical_reads(app, reads, *, store, security, auth, audit):
 
     @app.get('/api/v1/canonical/status')
     def status(request: Request):
-        context(request)
+        user, key, _ = context(request)
+        scopes = set(user['permissions']) & set(key['scopes']) if key else set(user['permissions'])
         if reads is not None:
             try:
                 reads.verify()
             except (psycopg.Error, ValueError, CanonicalError):
                 failure(503, 'CANONICAL_READS_UNAVAILABLE', 'Destino canônico sintético indisponível ou divergente.')
         return {'enabled': reads is not None, 'environment': 'synthetic' if reads else None,
+                'writes_enabled': bool(reads and reads.writes_enabled),
+                'can_enrich': 'enrich' in scopes, 'can_validate': 'validate' in scopes,
+                'can_administer_catalog': 'admin' in scopes and key is None,
                 'search_enabled': bool(reads and reads.search_reader), 'auth_storage': 'sqlite-local-single-process',
                 'production_connected': False}
 

@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { displayPreciseValue } from './precision';
+import { CanonicalEnrichment } from './CanonicalEnrichment';
+import { CanonicalValidation } from './CanonicalValidation';
+import { CanonicalScalarEdit } from './CanonicalScalarEdit';
+import { CanonicalCatalog } from './CanonicalCatalog';
 
 type Dict = Record<string, any>;
-type API = (path: string, method?: string, body?: any) => Promise<any>;
+type API = (path: string, method?: string, body?: any, headers?: Record<string, string>) => Promise<any>;
 const show = (value: any) => value === undefined ? 'Ausente' : displayPreciseValue(value);
 const date = (value: any) => value ? new Date(value).toLocaleString('pt-BR') : 'Data não informada';
 
@@ -15,6 +19,8 @@ export function CanonicalPanel({ api }: { api: API }) {
   const [documentType, setDocumentType] = useState('CPF'), [document, setDocument] = useState('');
   const [entity, setEntity] = useState<Dict | null>(null), [items, setItems] = useState<Dict | null>(null);
   const [detail, setDetail] = useState<Dict | null>(null);
+  const [scalarEdit, setScalarEdit] = useState<Dict | null>(null);
+  const [validation, setValidation] = useState<Dict | null>(null);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const generation = useRef(0);
   useEffect(() => {
@@ -22,7 +28,7 @@ export function CanonicalPanel({ api }: { api: API }) {
     api('/canonical/status').then(value => { if (live) setStatus(value); }).catch(e => { if (live) setError(e.message); });
     return () => { live = false; generation.current++; };
   }, [api]);
-  function clear() { generation.current++; setEntity(null); setItems(null); setDetail(null); setError(''); setBusy(false); }
+  function clear() { generation.current++; setEntity(null); setItems(null); setDetail(null); setValidation(null); setScalarEdit(null); setError(''); setBusy(false); }
   async function open(event: React.FormEvent) {
     event.preventDefault(); clear(); const own = generation.current; setBusy(true);
     try {
@@ -31,12 +37,12 @@ export function CanonicalPanel({ api }: { api: API }) {
         mode === 'source' ? { source_id: source, source_record_id: external } : { country, document_type: documentType, value: document });
       const page = await api(base + '/' + meta.id + '/items', 'POST', { limit: 20, cursor: meta.items.cursor });
       if (own === generation.current) { setEntity(meta); setItems(page); }
-    } catch (e: any) { if (own === generation.current) { setEntity(null); setItems(null); setDetail(null); setError(e.message); } }
+    } catch (e: any) { if (own === generation.current) { setEntity(null); setItems(null); setDetail(null); setValidation(null); setScalarEdit(null); setError(e.message); } }
     finally { if (own === generation.current) setBusy(false); }
   }
   async function load(kind: string, cursor: string, itemId?: string) {
     if (!entity) return;
-    const own = ++generation.current; setBusy(true); setError(''); setDetail(null);
+    const own = ++generation.current; setBusy(true); setError(''); setDetail(null); setValidation(null); setScalarEdit(null);
     if (kind === 'items') setItems(null);
     try {
       const page = await api('/canonical/' + collection + '/' + entity.id + '/' + kind, 'POST',
@@ -44,7 +50,7 @@ export function CanonicalPanel({ api }: { api: API }) {
       if (own === generation.current) {
         if (kind === 'items') setItems(page); else setDetail({ kind, itemId, page });
       }
-    } catch (e: any) { if (own === generation.current) { setEntity(null); setItems(null); setDetail(null); setError(e.message); } }
+    } catch (e: any) { if (own === generation.current) { setEntity(null); setItems(null); setDetail(null); setValidation(null); setScalarEdit(null); setError(e.message); } }
     finally { if (own === generation.current) setBusy(false); }
   }
   return <section className="card canonical-panel" aria-label="Consulta canônica">
@@ -53,6 +59,7 @@ export function CanonicalPanel({ api }: { api: API }) {
     {error && <p role="alert">{error}</p>}
     {!status && !error && <p role="status">Conferindo disponibilidade…</p>}
     {status && !status.enabled && <p role="status">Leitura canônica sintética não configurada neste serviço.</p>}
+    {status?.enabled && <CanonicalCatalog api={api} canAdmin={Boolean(status.writes_enabled && status.can_administer_catalog)} />}
     {status?.enabled && <>
       <form onSubmit={open}>
         <div className="form-grid">
@@ -65,6 +72,38 @@ export function CanonicalPanel({ api }: { api: API }) {
         <button className="primary" disabled={busy} type="submit">Abrir ficha canônica</button>
       </form>
       {busy && <p role="status">Carregando página…</p>}
+      {status.writes_enabled && status.can_enrich && <CanonicalEnrichment key={collection + ':' + (entity?.id || 'new')} api={api} collection={collection} canValidate={status.can_validate}
+        entity={entity} source={source} external={external} onWritten={async (owner, writeSource, writeExternal) => {
+          const own = ++generation.current;
+          setSource(writeSource); setExternal(writeExternal);
+          const meta = await api('/canonical/' + collection + '/' + owner);
+          const page = await api('/canonical/' + collection + '/' + owner + '/items', 'POST', { limit: 20, cursor: meta.items.cursor });
+          if (own === generation.current) { setEntity(meta); setItems(page); setDetail(null); setValidation(null); setScalarEdit(null); }
+        }} />}
+      {entity && validation && status.writes_enabled && status.can_validate && <CanonicalValidation
+        key={collection + ':' + validation.observation_id} api={api} collection={collection} entity={entity} row={validation}
+        onCancel={() => setValidation(null)} onWritten={async () => {
+          const own = ++generation.current;
+          const base = '/canonical/' + collection + '/' + entity.id;
+          const meta = await api(base);
+          const [page, fields] = await Promise.all([
+            api(base + '/items', 'POST', { limit: 20, cursor: meta.items.cursor }),
+            api(base + '/fields', 'POST', { limit: 20, cursor: meta.fields.cursor }),
+          ]);
+          if (own === generation.current) { setEntity(meta); setItems(page); setDetail({ kind: 'fields', page: fields }); setValidation(null); setScalarEdit(null); }
+        }} />}
+      {entity && scalarEdit && status.writes_enabled && status.can_enrich && <CanonicalScalarEdit
+        key={collection + ':' + scalarEdit.observation_id} api={api} collection={collection} entity={entity} row={scalarEdit}
+        onCancel={() => setScalarEdit(null)} onWritten={async () => {
+          const own = ++generation.current;
+          const base = '/canonical/' + collection + '/' + entity.id;
+          const meta = await api(base);
+          const [page, fields] = await Promise.all([
+            api(base + '/items', 'POST', { limit: 20, cursor: meta.items.cursor }),
+            api(base + '/fields', 'POST', { limit: 20, cursor: meta.fields.cursor }),
+          ]);
+          if (own === generation.current) { setEntity(meta); setItems(page); setDetail({ kind: 'fields', page: fields }); setValidation(null); setScalarEdit(null); }
+        }} />}
       {entity && <section aria-label="Ficha canônica">
         <h3>{entity.entity_type === 'person' ? 'Pessoa' : 'Empresa'} · versão {show(entity.version)}</h3>
         <p className="canonical-id">{entity.id}</p>
@@ -90,15 +129,56 @@ export function CanonicalPanel({ api }: { api: API }) {
             <dl>
               <dt>Valor {detail.kind === 'fields' ? 'aplicável' : 'normalizado'}</dt><dd>{show(detail.kind === 'fields' ? row.value : row.normalized_value)}</dd>
               <dt>Entrada original</dt><dd>{show(row.input_value)}</dd>
+              {row.metadata?.custom_field && <>
+                <dt>Definição do campo adicional</dt><dd>{show(row.metadata.field_id)} · versão {show(row.metadata.field_definition_version)}</dd>
+                <dt>Classificação / indexação canônica</dt><dd>{row.metadata.classification_state === 'defined' ? 'Definido' : 'Pendente de classificação'} / pendente</dd>
+                <dt>Definição preservada</dt><dd>{show(row.metadata.field_definition)}</dd>
+              </>}
+              {row.metadata?.phone_normalization && <>
+                <dt>Normalização do telefone</dt><dd>{({ historical_conversion: 'Conversão histórica', canonical: 'Formato canônico', review: 'Revisão necessária' } as Record<string, string>)[row.metadata.phone_normalization.decision]}</dd>
+                <dt>Regra / versão</dt><dd>{show(row.metadata.phone_normalization.rule_id)} / {show(row.metadata.normalization)}</dd>
+                <dt>Classificação técnica</dt><dd>{show(row.metadata.phone_output?.classification)}</dd>
+                <dt>Contexto e resultado da normalização</dt><dd>{show(row.metadata.phone_output)}</dd>
+                <dt>Motivo / observações da normalização</dt><dd>{show(row.metadata.phone_normalization.reason)} / {show(row.metadata.normalization_notes)}</dd>
+              </>}
+              {row.metadata?.username_normalization && <>
+                <dt>Normalização de username</dt><dd>{row.metadata.username_normalization.decision === 'platform_normalized' ? 'Plataforma padronizada' : 'Username preservado literalmente'}</dd>
+                <dt>Regra / versão de username</dt><dd>{show(row.metadata.username_normalization.rule_id)} / {show(row.metadata.normalization)}</dd>
+                <dt>Plataforma nesta operação</dt><dd>{show(row.metadata.username_normalization.platform)}</dd>
+              </>}
+              {row.metadata?.postal_normalization && <>
+                <dt>Normalização postal</dt><dd>{row.metadata.postal_normalization.decision === 'review' ? 'Revisão postal necessária' : 'CEP formatado'}</dd>
+                <dt>Regra / versão postal</dt><dd>{show(row.metadata.postal_normalization.rule_id)} / {show(row.metadata.normalization)}</dd>
+                <dt>País informado nesta operação</dt><dd>{show(row.metadata.postal_normalization.country)}</dd>
+                <dt>Candidato postal</dt><dd>{show(row.metadata.postal_normalization.candidate_value)}</dd>
+                <dt>Formato postal reconhecido</dt><dd>{show(row.metadata.postal_normalization.syntax_valid)} — não confirma existência ou residência</dd>
+              </>}
+              {row.metadata?.email_normalization && <>
+                <dt>Normalização do email</dt><dd>{row.metadata.email_normalization.decision === 'review' ? 'Revisão necessária' : 'Domínio normalizado'}</dd>
+                <dt>Regra / versão do email</dt><dd>{show(row.metadata.email_normalization.rule_id)} / {show(row.metadata.normalization)}</dd>
+                <dt>Parte local preservada</dt><dd>{show(row.metadata.email_normalization.input_local_part)}</dd>
+                <dt>Domínio recebido / normalizado</dt><dd>{show(row.metadata.email_normalization.input_domain)} / {show(row.metadata.email_normalization.output_domain)}</dd>
+                <dt>Formato básico reconhecido</dt><dd>{show(row.metadata.email_normalization.syntax_valid)} — não confirma entregabilidade ou titularidade</dd>
+              </>}
               <dt>Origem / caminho original</dt><dd>{show(row.source_id)} / {show(row.source_path)}</dd>
               <dt>Estado / aplicada</dt><dd>{row.status} / {show(row.applied)}</dd>
               {detail.kind === 'fields' && <><dt>Confirmação associada ao valor atual</dt><dd>{show(row.applicable)}</dd></>}
+              {detail.kind === 'fields' && row.dimension.startsWith('flag:') && <>
+                <dt>Atualidade da confirmação</dt><dd>{row.stale === null ? 'Vencimento pendente de classificação' : row.stale ? 'Confirmação desatualizada' : row.expires_at ? 'Dentro do prazo informado' : 'Sem vencimento informado'}</dd>
+                <dt>Verificada em</dt><dd>{date(row.checked_at)}</dd><dt>Vence em</dt><dd>{date(row.expires_at)}</dd>
+              </>}
               <dt>Data da fonte</dt><dd>{date(row.source_updated_at)}</dd>
               <dt>Observada em</dt><dd>{date(row.observed_at)}</dd>
               <dt>Recebida em</dt><dd>{date(row.received_at)}</dd>
               <dt>Ator / operação</dt><dd>{show(row.actor_id)} / {row.operation_id}</dd>
               <dt>Metadados e evidências</dt><dd>{show(row.metadata)}</dd>
             </dl>
+            {status.writes_enabled && status.can_enrich && detail.kind === 'fields' && row.dimension === 'value' &&
+              !['empty_object', 'empty_array'].includes(row.input_type) &&
+              <button disabled={busy} onClick={() => { setValidation(null); setScalarEdit(row); }}>Editar este valor</button>}
+            {status.writes_enabled && status.can_validate && row.dimension === 'value' &&
+              !['empty_object', 'empty_array'].includes(row.input_type) &&
+              <button disabled={busy} onClick={() => { setScalarEdit(null); setValidation(row); }}>Validar este valor</button>}
           </article>)}
           {detail.page.has_more && <button disabled={busy} onClick={() => load(detail.kind, detail.page.next_cursor, detail.itemId)}>Próximas observações</button>}
         </section>}

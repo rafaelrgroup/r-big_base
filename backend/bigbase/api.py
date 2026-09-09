@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import re
 import asyncio
 import json
 import secrets
@@ -94,7 +95,11 @@ def create_app(root=None,testing=False,*,canonical_reads=None):
                 request._body=getattr(request,'_body',b'')+chunk
         if request.method in {'POST','PATCH','PUT'} and is_json_content_type(request.headers.get('content-type')):
             try:
-                load_preserving_json(getattr(request,'_body',b''))
+                if (request.method == 'POST' and request.url.path in {'/api/v1/canonical/people/enrich', '/api/v1/canonical/companies/enrich'}) or (request.method == 'PATCH' and re.fullmatch(r'/api/v1/canonical/(people|companies)/[^/]+/items/[^/]+/value', request.url.path)):
+                    from .canonical_store import decode
+                    decode(getattr(request,'_body',b''))
+                else:
+                    load_preserving_json(getattr(request,'_body',b''))
             except IngressJSONError as exc:return JSONResponse({'detail':str(exc),'code':exc.code,'request_id':rid},422)
             except (ValueError,UnicodeDecodeError,RecursionError):return JSONResponse({'detail':'JSON inválido, profundo demais ou com número não finito','request_id':rid},422)
         response=await call_next(request)
@@ -149,6 +154,14 @@ def create_app(root=None,testing=False,*,canonical_reads=None):
         return project(e)
     from .canonical_http import install_canonical_reads, maintain_canonical_cursors
     install_canonical_reads(app, canonical_reads, store=store, security=security, auth=auth, audit=audit)
+    from .canonical_enrichment import install_canonical_writes
+    install_canonical_writes(app, canonical_reads, store=store, auth=auth, source_check=source_check)
+    from .canonical_validation import install_canonical_validation
+    install_canonical_validation(app, canonical_reads, store=store, auth=auth, source_check=source_check)
+    from .canonical_scalar_patch import install_canonical_scalar_patch
+    install_canonical_scalar_patch(app, canonical_reads, store=store, auth=auth, source_check=source_check)
+    from .canonical_catalog import install_canonical_catalog
+    install_canonical_catalog(app, canonical_reads, store=store, security=security, auth=auth)
     @app.get('/api/v1/health')
     def health():return {'status':'ok','environment':'isolated-development','production_connected':False}
     @app.post('/api/v1/auth/activate')
