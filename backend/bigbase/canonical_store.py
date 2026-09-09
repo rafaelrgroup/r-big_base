@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from pathlib import Path
@@ -39,6 +39,10 @@ class CanonicalError(ValueError):
 
 
 class IdentityConflict(CanonicalError):
+    pass
+
+
+class VersionConflict(CanonicalError):
     pass
 
 
@@ -103,9 +107,12 @@ def decode(text: str) -> Any:
                 raise CanonicalError("Duplicate object key in JSON literal")
             result[key] = value
         return result
-    return json.loads(text, parse_float=Decimal,
-                      object_pairs_hook=unique_pairs,
-                      parse_constant=lambda _: (_ for _ in ()).throw(CanonicalError("Non-finite JSON")))
+    try:
+        return json.loads(text, parse_float=Decimal,
+                          object_pairs_hook=unique_pairs,
+                          parse_constant=lambda _: (_ for _ in ()).throw(CanonicalError("Non-finite JSON")))
+    except InvalidOperation:
+        raise CanonicalError('Decimal exponent exceeds the exact parser range') from None
 
 
 def digest(value: Any) -> str:
@@ -485,6 +492,175 @@ class CanonicalStore:
                       (next_checkpoint, json_text(next_cursor), len(records), operations, observations, job_uuid))
             return receipt
 
+    def apply_enrichment(self, record: dict, *, actor_id: str, request_key: str,
+                         expected_version: int, expected_owner: str | None = None, validate_record=None) -> dict:
+        """One HTTP operation, including durable replay, in one PostgreSQL transaction.
+
+        Identity locks follow the same order as migration batches. The receipt is
+        reconstructed from immutable operations, never from the latest entity.
+        No migration job or second copy of the entity is created.
+        """
+        _text(actor_id, 'actor_id')
+        _text(request_key, 'request_key')
+        if type(expected_version) is not int or not 0 <= expected_version < 2**63 - 1:
+            raise CanonicalError('Invalid expected entity version')
+        expected_owner = UUID(expected_owner) if expected_owner is not None else None
+        prepared = prepare_canonical_record(record)
+        prepared['operation_id'] = identifier('http-enrichment', [actor_id, request_key])
+        prepared['prepared_hash'] = digest({'record': record, 'expected_version': expected_version,
+                                           'expected_owner': str(expected_owner) if expected_owner else None})
+        with self.connection() as c:
+            self._deployment(c)
+            c.execute('SELECT pg_advisory_xact_lock(%s)',
+                      (self._lock_key([self.schema, 'http-enrichment', str(prepared['operation_id'])]),))
+            prior = c.execute('SELECT * FROM operations WHERE operation_id=%s', (prepared['operation_id'],)).fetchone()
+            if prior:
+                if prior['prepared_hash'] != prepared['prepared_hash']:
+                    raise IdempotencyConflict('Idempotency key already committed different content')
+                count = c.execute('SELECT count(*) AS n FROM observations WHERE owner_id=%s AND operation_id=%s',
+                                  (prior['owner_id'], prior['operation_id'])).fetchone()['n']
+                return {'id': str(prior['owner_id']), 'operation_id': str(prior['operation_id']),
+                        'record_version': prior['entity_version'], 'observations_created': count, 'replayed': True}
+            if validate_record is not None:
+                validated = prepare_canonical_record(validate_record(c))
+                validated.update(operation_id=prepared['operation_id'], prepared_hash=prepared['prepared_hash'])
+                prepared = validated
+            keys = sorted(key for key, _, _ in prepared['identities'])
+            for key in keys:
+                c.execute('SELECT pg_advisory_xact_lock(%s)', (self._lock_key([self.schema, 'identity', key]),))
+            owners = c.execute('SELECT DISTINCT owner_id FROM identity_keys WHERE key_hash=ANY(%s) ORDER BY owner_id', (keys,)).fetchall()
+            if len(owners) > 1:
+                raise IdentityConflict('Identities belong to distinct entities')
+            owner = owners[0]['owner_id'] if owners else None
+            if expected_owner is not None and owner != expected_owner:
+                raise IdentityConflict('Expected entity does not match the supplied identity')
+            current = c.execute('SELECT version FROM entities WHERE owner_id=%s FOR UPDATE', (owner,)).fetchone() if owner else None
+            if (current['version'] if current else 0) != expected_version:
+                raise VersionConflict('Entity version changed; reopen before writing')
+            owner, created, count = self._apply_record(c, prepared, actor_id)
+            version = c.execute('SELECT entity_version FROM operations WHERE operation_id=%s', (prepared['operation_id'],)).fetchone()['entity_version']
+            return {'id': str(owner), 'operation_id': str(prepared['operation_id']),
+                    'record_version': version, 'observations_created': count, 'replayed': not created}
+
+    def apply_validation(self, body: dict, *, owner_id: str, item_id: str, entity_type: str,
+                         actor_id: str, request_key: str, api_key_id: str | None = None) -> dict:
+        """Append only flags, with the entity lock, durable receipt and outbox."""
+        from .canonical_validation import prepare_validation, CONTRACT_VERSION
+        prepared = prepare_validation(body)
+        owner, item = UUID(owner_id), UUID(item_id)
+        _text(actor_id, 'actor_id'); _text(request_key, 'request_key')
+        operation = identifier('http-validation', [actor_id, request_key])
+        fingerprint = digest({'body': body, 'owner': str(owner), 'item': str(item),
+                              'entity_type': entity_type, 'api_key_id': api_key_id})
+        with self.connection() as c:
+            self._deployment(c)
+            c.execute('SELECT pg_advisory_xact_lock(%s)',
+                      (self._lock_key([self.schema, 'http-validation', str(operation)]),))
+            prior = c.execute('SELECT * FROM operations WHERE operation_id=%s', (operation,)).fetchone()
+            if prior:
+                if prior['prepared_hash'] != fingerprint:
+                    raise IdempotencyConflict('Idempotency key already committed different content')
+                return {'id': str(owner), 'operation_id': str(operation), 'record_version': prior['entity_version'],
+                        'observations_created': len(prepared['flags']), 'replayed': True}
+            entity = c.execute('SELECT * FROM entities WHERE owner_id=%s FOR UPDATE', (owner,)).fetchone()
+            if not entity or entity['entity_type'] != entity_type:
+                raise CanonicalError('Entity/collection does not exist')
+            if entity['version'] != prepared['expected_version']:
+                raise VersionConflict('Entity version changed')
+            target = c.execute('SELECT * FROM observations WHERE owner_id=%s AND observation_id=%s',
+                               (owner, UUID(prepared['value_observation_id']))).fetchone()
+            if (not target or target['item_id'] != item or target['dimension'] != 'value'
+                    or target['target_path_json'] != json_text(prepared['field_path'])
+                    or isinstance(decode(target['normalized_json']), (dict, list))):
+                raise CanonicalError('Reference must identify a scalar value on the exact item and field')
+            item_row = c.execute('SELECT version FROM items WHERE owner_id=%s AND item_id=%s', (owner, item)).fetchone()
+            received = c.execute('SELECT clock_timestamp() AS received').fetchone()['received']
+            version = entity['version'] + 1
+            c.execute('INSERT INTO operations(operation_id,owner_id,entity_version,source_id_json,source_record_id_json,source_version_json,record_hash,adapter_version_json,normalizer_version_json,prepared_hash,actor_id_json,received_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                      (operation, owner, version, json_text(prepared['source_id']), json_text(str(target['observation_id'])),
+                       'null', digest(body), json_text(CONTRACT_VERSION), json_text('preserved-no-inference'),
+                       fingerprint, json_text(actor_id), received))
+            for sequence, (name, flag) in enumerate(prepared['flags'].items(), 1):
+                binding = decode(target['metadata_json'])
+                schema = {k: binding[k] for k in ('custom_field', 'field_id', 'field_definition_version', 'field_definition', 'field_definition_sha256', 'classification_state', 'canonical_search_state', 'catalog_environment', 'value_policy') if k in binding}
+                evidence = {**flag, **schema, 'confirmed_value_json': target['normalized_json'],
+                            'value_observation_id': str(target['observation_id']), 'api_key_id': api_key_id}
+                fact = {'raw': {'target_path': prepared['field_path'], 'source_path': '/flags/'+name},
+                        'id': digest([str(item), prepared['field_path'], name]), 'status': 'unknown',
+                        'input_json': target['normalized_json']}
+                self._observe(c, owner, item, operation, prepared['source_id'], actor_id, received, fact, name, evidence,
+                              entity_version=version, operation_sequence=sequence, item_version=item_row['version']+1)
+            c.execute('UPDATE items SET version=version+1,updated_at=%s WHERE owner_id=%s AND item_id=%s', (received, owner, item))
+            c.execute('UPDATE entities SET version=%s,updated_at=%s WHERE owner_id=%s', (version, received, owner))
+            c.execute('INSERT INTO outbox(event_id,operation_id,owner_id,entity_version,created_at) VALUES(%s,%s,%s,%s,%s)',
+                      (identifier('outbox', str(operation)), operation, owner, version, received))
+            return {'id': str(owner), 'operation_id': str(operation), 'record_version': version,
+                    'observations_created': len(prepared['flags']), 'replayed': False}
+
+    def apply_scalar_patch(self, body: dict, *, owner_id: str, item_id: str, entity_type: str,
+                         actor_id: str, request_key: str, api_key_id: str | None = None) -> dict:
+        """Append a scalar to an existing field, without changing identity keys."""
+        from .canonical_scalar_patch import prepare_scalar_patch, CONTRACT_VERSION
+        prepared = prepare_scalar_patch(body)
+        owner, item = UUID(owner_id), UUID(item_id)
+        _text(actor_id, 'actor_id'); _text(request_key, 'request_key')
+        operation = identifier('http-scalar-patch', [actor_id, request_key])
+        fingerprint = digest({'body': body, 'owner': str(owner), 'item': str(item),
+                              'entity_type': entity_type, 'api_key_id': api_key_id})
+        with self.connection() as c:
+            self._deployment(c)
+            c.execute('SELECT pg_advisory_xact_lock(%s)',
+                      (self._lock_key([self.schema, 'http-scalar-patch', str(operation)]),))
+            prior = c.execute('SELECT * FROM operations WHERE operation_id=%s', (operation,)).fetchone()
+            if prior:
+                if prior['prepared_hash'] != fingerprint:
+                    raise IdempotencyConflict('Idempotency key already committed different content')
+                return {'id': str(owner), 'operation_id': str(operation), 'record_version': prior['entity_version'],
+                        'observations_created': 1, 'replayed': True}
+            entity = c.execute('SELECT * FROM entities WHERE owner_id=%s FOR UPDATE', (owner,)).fetchone()
+            if not entity or entity['entity_type'] != entity_type:
+                raise CanonicalError('Entity/collection does not exist')
+            if entity['version'] != prepared['expected_version']:
+                raise VersionConflict('Entity version changed')
+            target = c.execute("SELECT * FROM field_state WHERE owner_id=%s AND item_id=%s AND target_path_hash=%s AND dimension='value'",
+                               (owner, item, digest(prepared['field_path']))).fetchone()
+            if (not target or target['target_path_json'] != json_text(prepared['field_path'])
+                    or isinstance(decode(target['value_json']), (dict, list))):
+                raise CanonicalError('Target must identify an existing scalar value on the exact item and field')
+            item_row = c.execute('SELECT version,kind FROM items WHERE owner_id=%s AND item_id=%s', (owner, item)).fetchone()
+            if not item_row or item_row['kind'] == 'relationship':
+                raise CanonicalError('Relationships require their own contract')
+            received = c.execute('SELECT clock_timestamp() AS received').fetchone()['received']
+            version = entity['version'] + 1
+            c.execute('INSERT INTO operations(operation_id,owner_id,entity_version,source_id_json,source_record_id_json,source_version_json,record_hash,adapter_version_json,normalizer_version_json,prepared_hash,actor_id_json,received_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                      (operation, owner, version, json_text(prepared['source_id']), json_text(str(target['observation_id'])),
+                       'null', digest(body), json_text(CONTRACT_VERSION), json_text('preserved-no-inference'),
+                       fingerprint, json_text(actor_id), received))
+            literal = json_text(prepared['value'])
+            metadata = {name: prepared[name] for name in ('reason',) if name in prepared}
+            metadata.update(api_key_id=api_key_id, normalization='preserved-no-inference',
+                            target_observation_id=str(target['observation_id']), identity_registry_updated=False)
+            fact = {'raw': {'target_path': prepared['field_path'], 'source_path': '/value'},
+                    'id': digest([str(item), prepared['field_path']]), 'status': 'unknown',
+                    'input_json': literal, 'normalized_json': literal, 'input_type': _input_type(prepared['value']),
+                    'input_encoding': 'canonical_value', 'metadata_json': json_text(metadata),
+                    'source_updated_at': _date(prepared.get('source_updated_at')),
+                    'observed_at': _date(prepared.get('observed_at'))}
+            if item_row['kind'] == 'custom':
+                from .canonical_fields import guard_custom_field
+                guard_custom_field(c, owner, item, fact)
+            if item_row['kind'] == 'username':
+                from .canonical_username import guard_username_platform
+                guard_username_platform(c, owner, item, fact)
+            self._observe(c, owner, item, operation, prepared['source_id'], actor_id, received, fact,
+                          entity_version=version, operation_sequence=1, item_version=item_row['version']+1)
+            c.execute('UPDATE items SET version=version+1,updated_at=%s WHERE owner_id=%s AND item_id=%s', (received, owner, item))
+            c.execute('UPDATE entities SET version=%s,updated_at=%s WHERE owner_id=%s', (version, received, owner))
+            c.execute('INSERT INTO outbox(event_id,operation_id,owner_id,entity_version,created_at) VALUES(%s,%s,%s,%s,%s)',
+                      (identifier('outbox', str(operation)), operation, owner, version, received))
+            return {'id': str(owner), 'operation_id': str(operation), 'record_version': version,
+                    'observations_created': 1, 'replayed': False}
+
     def _apply_record(self, c, record: dict, actor_id: str) -> tuple[UUID, bool, int]:
         owners = set()
         for key, _, identity_json in record["identities"]:
@@ -531,6 +707,12 @@ class CanonicalStore:
             item = c.execute("SELECT * FROM items WHERE owner_id=%s AND item_id=%s", (owner, item_id)).fetchone()
             if item is None or item["item_key_json"] != json_text(raw["item_key"]) or item["kind"] != fact["kind"]:
                 raise IdentityConflict("Item hash collision requires manual investigation")
+            if fact['kind'] == 'custom':
+                from .canonical_fields import guard_custom_field
+                guard_custom_field(c, owner, item_id, fact)
+            if fact['kind'] == 'username':
+                from .canonical_username import guard_username_platform
+                guard_username_platform(c, owner, item_id, fact)
             self._observe(c, owner, item_id, operation_id, record["source"], actor_id, received, fact,
                           entity_version=entity_version, operation_sequence=count+1,item_version=item["version"]+1)
             count += 1
@@ -846,6 +1028,18 @@ class CanonicalStore:
                 applicable = row["dimension"] == "value" or (row["binding_value_json"] is not None and row["binding_hash"] == digest(decode(row["binding_value_json"])))
                 result.update(applicable=applicable,value=result["normalized_value"] if applicable else None,
                               value_json=row["normalized_json"] if applicable else "null")
+                if row['dimension'].startswith('flag:'):
+                    evaluated = datetime.now(timezone.utc)
+                    metadata = result['metadata']
+                    # Older adapters can preserve unknown evidence metadata.
+                    # A malformed expiry must not hide the field or its history.
+                    try:
+                        expiry = _date(metadata.get('expires_at'))
+                        stale = bool(expiry and expiry <= evaluated)
+                    except CanonicalError:
+                        stale = None
+                    result.update(checked_at=metadata.get('checked_at'), expires_at=metadata.get('expires_at'),
+                                  stale=stale, freshness_evaluated_at=evaluated.isoformat())
                 return result
             raw,public,more = self._take_page(c,query,params,limit,public_field)
             position = [str(raw[-1]["item_id"]),raw[-1]["target_path_hash"],raw[-1]["dimension"]] if raw else None

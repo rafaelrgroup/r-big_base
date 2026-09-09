@@ -102,7 +102,7 @@ def test_unknowns_unsafe_text_and_large_values_are_counted_not_mutated_or_dynami
     document = build_projection(original)
     assert document["omitted"]["unsafe_text"] == 2
     assert document["omitted"]["long_text"] == 1
-    assert document["omitted"]["unknown_items"] == 1
+    assert document["omitted"]["unknown_items"] == 0
     assert document["omitted"]["unknown_fields"] == 2
     assert len(flat_fields(document)) == 1
     metadata = json.loads(flat_fields(document)[0]["metadata_json"])

@@ -19,7 +19,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .canonical_store import CanonicalStore, CanonicalError, InvalidCursor, CanonicalRowTooLarge, digest, json_text
 from .canonical_search_reader import CanonicalSearchReader, SearchReadError, InvalidSearchCursor
-from .canonical_search import build_query, ProjectionError
+from .canonical_search import build_query, ProjectionError, FIELDS, FLAGS, PROJECTION_VERSION
 from .security import hashed
 
 
@@ -40,12 +40,20 @@ def validate_synthetic_dsn(dsn):
 
 class CanonicalReads:
     def __init__(self, repository: CanonicalStore, *, expected_deployment_id: str,
-                 search_reader: CanonicalSearchReader | None = None):
+                 search_reader: CanonicalSearchReader | None = None, writes_enabled: bool = False,
+                 search_availability_provider=None):
         # Reject network/default destinations BEFORE opening a connection.
         validate_synthetic_dsn(repository.dsn)
         self.repository = repository
         self.deployment_id = str(UUID(expected_deployment_id))
         self.search_reader = search_reader
+        # Internal synthetic dependency only; never populated from HTTP input.
+        if search_availability_provider is not None and not callable(search_availability_provider):
+            raise ValueError('INVALID_SEARCH_AVAILABILITY_PROVIDER')
+        self.search_availability_provider = search_availability_provider
+        if type(writes_enabled) is not bool:
+            raise ValueError('CANONICAL_WRITES_REQUIRE_EXPLICIT_BOOLEAN')
+        self.writes_enabled = writes_enabled
         self.verify()
 
     def verify(self):
@@ -112,7 +120,7 @@ def install_canonical_reads(app, reads, *, store, security, auth, audit):
     def available(request):
         user, key, authorization = context(request)
         if reads is None:
-            failure(503, 'CANONICAL_READS_DISABLED', 'Leitura canônica sintética não configurada.')
+            failure(503, 'CANONICAL_READS_DISABLED', 'Leitura canônica não configurada.')
         try:
             reads.verify()
             yield user, key, authorization
@@ -132,7 +140,7 @@ def install_canonical_reads(app, reads, *, store, security, auth, audit):
                 failure(422, 'UNSUPPORTED_CANONICAL_SEARCH', 'Critério ou ordenação ainda não suportado.')
             failure(503, 'CANONICAL_SEARCH_UNAVAILABLE', 'Pesquisa canônica temporariamente indisponível.')
         except (psycopg.Error, ValueError):
-            failure(503, 'CANONICAL_READS_UNAVAILABLE', 'Destino canônico sintético indisponível ou divergente.')
+            failure(503, 'CANONICAL_READS_UNAVAILABLE', 'Destino canônico indisponível ou divergente.')
 
     def typed_collection(collection):
         if collection not in {'people', 'companies'}:
@@ -191,15 +199,24 @@ def install_canonical_reads(app, reads, *, store, security, auth, audit):
 
     @app.get('/api/v1/canonical/status')
     def status(request: Request):
-        context(request)
+        user, key, _ = context(request)
+        scopes = set(user['permissions']) & set(key['scopes']) if key else set(user['permissions'])
         if reads is not None:
             try:
                 reads.verify()
             except (psycopg.Error, ValueError, CanonicalError):
-                failure(503, 'CANONICAL_READS_UNAVAILABLE', 'Destino canônico sintético indisponível ou divergente.')
-        return {'enabled': reads is not None, 'environment': 'synthetic' if reads else None,
-                'search_enabled': bool(reads and reads.search_reader), 'auth_storage': 'sqlite-local-single-process',
-                'production_connected': False}
+                failure(503, 'CANONICAL_READS_UNAVAILABLE', 'Destino canônico indisponível ou divergente.')
+        return {'enabled': reads is not None, 'environment': getattr(reads, 'environment', 'synthetic') if reads else None,
+                'writes_enabled': bool(reads and reads.writes_enabled),
+                'can_enrich': 'enrich' in scopes, 'can_validate': 'validate' in scopes,
+                'can_administer_catalog': 'admin' in scopes and key is None,
+                'search_enabled': (reads.search_enabled() if hasattr(reads, 'search_enabled') else bool(reads and reads.search_reader)),
+                'search_coverage': getattr(getattr(reads, 'search_resource', None), 'coverage_scope', None),
+                'search_fields': {kind:sorted(fields) for kind,fields in FIELDS.items()},
+                'search_flags': list(FLAGS), 'search_projection_version': PROJECTION_VERSION,
+                'auth_storage': getattr(reads, 'auth_storage', 'sqlite-local-single-process'),
+                'runtime': 'deployed' if getattr(reads, 'environment', None) in {'staging', 'production'} else 'development',
+                'production_connected': getattr(reads, 'environment', None) == 'production'}
 
     @app.post('/api/v1/canonical/{collection}/lookup')
     def lookup(collection: str, body: dict, request: Request):

@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "continuation_run_id": "20260909T063405Z-cc3807423df34d3a86ae3c50ff2d583d",
+  "updated_at": "2026-09-09T06:41:05.803347+00:00",
+  "status": "SYNTHETIC_CONTRACT_TESTED",
+  "project_complete": false,
+  "public_search_enabled": false,
+  "environment": "Linode MAIN, pure functions and simulated Elasticsearch, synthetic data only",
+  "command": ".venv/bin/pytest -q backend/tests/test_canonical_search_availability.py backend/tests/test_canonical_custom_search.py backend/tests/test_canonical_search.py backend/tests/test_canonical_search_reader.py --junitxml=var/validation/search-availability-20260909/backend-final.xml",
+  "results": {
+    "tests": 198,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "new_tests": 47,
+  "attempts": [
+    {
+      "tests": 36,
+      "passed": 35,
+      "failed": 1,
+      "finding": "Boolean receipt version compared equal to integer; fixed strict selector validation."
+    },
+    {
+      "tests": 187,
+      "passed": 187
+    },
+    {
+      "tests": 198,
+      "passed": 198
+    }
+  ],
+  "not_run": [
+    "full backend suite",
+    "PostgreSQL integration (previous fixture runtime ownership block remains unresolved; no retry in this pure block)",
+    "frontend build/browser (unchanged)",
+    "live Elasticsearch",
+    "load 50 requests/s"
+  ],
+  "limitations": [
+    "Trusted receipt producer and artifact verification not implemented in this block",
+    "No persistence or HTTP/PIT/UI integration of availability",
+    "Receipt is internal input, never client-authoritative proof",
+    "No change to published release, pilot, transport/reconciliation/jobs modules or real records",
+    "Canonical sorting, bulk/XLSX, migration and full matrix pending"
+  ],
+  "files": [
+    {
+      "path": "backend/bigbase/canonical_search_availability.py",
+      "sha256": "a3058649297ad8bb033d87e21cf647d66cc3867ceec4bc8b1fc075f4e3ea85a7"
+    },
+    {
+      "path": "backend/tests/test_canonical_search_availability.py",
+      "sha256": "ea7268646fa9034ae9876eebcd56641d418bdc4a06b4efd0e3ebe4be2450ead0"
+    },
+    {
+      "path": "backend/bigbase/canonical_search.py",
+      "sha256": "8d82789a10210fa4fb5c2f559b0ca120ac1200be7a8a14ee4fe44d3cd9d3411b"
+    },
+    {
+      "path": "backend/bigbase/canonical_search_reader.py",
+      "sha256": "1cd83ce57bf830db435fcbb8fab1b5ffe4df3f631dce768d9d6b7b5c7f6b9601"
+    },
+    {
+      "path": "backend/tests/test_canonical_custom_search.py",
+      "sha256": "79f98ed1f3116340d2fbddfb7bf356712690a2bc75a13b3eaf14270e09c98c32"
+    },
+    {
+      "path": "backend/tests/test_canonical_search.py",
+      "sha256": "2eaf99dda8a66e3b6619ab9cb4fdab4948188732a523e63a75e7fc6b04d16a01"
+    },
+    {
+      "path": "backend/tests/test_canonical_search_reader.py",
+      "sha256": "c93fb8b2a25387334dd95caa47606680085c535f95e87973105564b1c586c3e8"
+    },
+    {
+      "path": "docs/IMPLEMENTACAO.md",
+      "sha256": "6e1f50bdf4b0a4d5ee8fd3a49a3bbc677d46e47683d54c4d4fa14b7611b6551a"
+    },
+    {
+      "path": "docs/BUSCA-CAMPOS-CANONICOS.md",
+      "sha256": "5bb0097d4e93e859b6e7a88ca30c62afbc7da4349bacd8ef1e3e0649a8ac29fa"
+    }
+  ]
+}

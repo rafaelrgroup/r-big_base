@@ -4,9 +4,9 @@ Cadastro unificado de pessoas e empresas com múltiplos documentos, contatos, en
 
 ## Estado verificável
 
-O núcleo local está implementado e testado. A fundação PostgreSQL, os adaptadores de migração, a reconciliação por campo e os componentes de busca estão implementados separadamente. **O painel/API ainda usam o adaptador SQLite de desenvolvimento. A integração de produção, o piloto, a migração real e a homologação de escala permanecem pendentes.**
+Há dois modos explícitos: o adaptador local de desenvolvimento e uma implantação separada conectada ao PostgreSQL canônico em ambiente `staging`. A implantação oferece login/OTP, administração, consulta por identidade, ficha/histórico, enriquecimento, validação, edição escalar e catálogo. O SQLite dessa implantação guarda somente controle/autenticação; dados cadastrais vão ao PostgreSQL. **Busca por filtros, importação/exportação canônicas, piloto, migração integral e homologação de escala permanecem pendentes.** Consulte o [contrato de implantação](docs/DEPLOYMENT-RUNTIME.md).
 
-A rodada integrada passou com 896 testes de backend, 14 de precisão, nove de entrada de importação, seis de compatibilidade de ordenação, 22 grupos no navegador e build TypeScript/Vite. Consulte a [validação](docs/VALIDACAO.md), a [matriz de requisitos](docs/IMPLEMENTACAO.md) e o [plano completo](docs/PLANO-PROJETO-COMPLETO.md). Testes sintéticos não comprovam a capacidade da carga real.
+A rodada histórica de 08/09/2026 passou com 896 testes de backend, 14 de precisão, nove de entrada de importação, seis de compatibilidade de ordenação, 22 grupos no navegador e build TypeScript/Vite. Consulte a [validação](docs/VALIDACAO.md), a [matriz de requisitos](docs/IMPLEMENTACAO.md) e o [plano completo](docs/PLANO-PROJETO-COMPLETO.md). A candidata de implantação foi validada separadamente com 38 testes de runtime/PostgreSQL, 373 regressões locais, seis grupos de interface e build; a matriz distingue essas provas das verificações de integração da árvore principal. Testes sintéticos não comprovam a capacidade da carga real.
 
 ## Instalação de desenvolvimento
 
@@ -42,7 +42,7 @@ Para testar rate limit compartilhado, `BIGBASE_REDIS_URL` deve apontar para Redi
 .venv/bin/python scripts/run-browser-tests.py
 ```
 
-O teste de navegador prepara e encerra seu próprio ambiente sintético. Não executá-lo contra produção. Testes PostgreSQL/Redis dependem de serviços isolados; testes ignorados significam dependência não validada. Para a rodada completa sem ignorados, preparar o fixture PostgreSQL e executar `.venv/bin/python scripts/run-verification.py`. Veja [CANONICAL-STORE.md](docs/CANONICAL-STORE.md). O instalador privado `scripts/prepare-postgres-test.sh` atualmente suporta Debian 12 amd64; outros sistemas exigem adaptação e validação, sem reaproveitar arquivos binários do host anterior.
+O teste de navegador prepara e encerra seu próprio ambiente sintético. Não executá-lo contra produção. Testes PostgreSQL/Redis dependem de serviços isolados; testes ignorados significam dependência não validada. Para a rodada completa sem ignorados, preparar o fixture PostgreSQL e executar `.venv/bin/python scripts/run-verification.py`. Veja [CANONICAL-STORE.md](docs/CANONICAL-STORE.md). O instalador privado `scripts/prepare-postgres-test.sh` suporta o runtime Debian 12 amd64 e a opção explícita de binários PostgreSQL 18 instalados no sistema, preservando um cluster sintético separado. Não usar clusters reais como fixture nem reaproveitar binários incompatíveis do host anterior.
 
 As evidências operacionais novas são produzidas em `var/validation/` e excluídas do Git. O manifesto público é uma seleção revisada, sem dados operacionais privados.
 

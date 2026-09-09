@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import re
 import asyncio
 import json
 import secrets
@@ -38,22 +39,38 @@ class StepUpOTP(BaseModel):
     code:str=Field(pattern=r'^[0-9]{6}$')
 
 
-def create_app(root=None,testing=False,*,canonical_reads=None):
-    if not testing and os.environ.get('BIGBASE_ENV','development')!='development':
+def create_app(root=None,testing=False,*,canonical_reads=None,deployment=None):
+    if deployment is not None:
+        from .deployment import DeploymentRuntime, DeploymentReads
+        if (not isinstance(deployment,DeploymentRuntime) or not isinstance(canonical_reads,DeploymentReads)
+                or testing or root is not None or deployment.identity != canonical_reads.repository.identity
+                or os.environ.get('BIGBASE_ENV') != deployment.identity.environment
+                or os.environ.get('BIGBASE_LOCAL_HTTP')=='1'):
+            raise RuntimeError('INVALID_DEPLOYMENT_RUNTIME_CONFIGURATION')
+        canonical_reads.verify()
+    if deployment is None and not testing and os.environ.get('BIGBASE_ENV','development')!='development':
         raise RuntimeError('Este adaptador é de desenvolvimento; configure o backend definitivo antes de produção.')
-    root=Path(root or os.environ.get('BIGBASE_DATA','var')).resolve();root.mkdir(parents=True,exist_ok=True);root.chmod(0o700)
-    store=Store(root/'development.sqlite3');security=Security(store,root);limiter=RedisLimiter(os.environ['BIGBASE_REDIS_URL']) if os.environ.get('BIGBASE_REDIS_URL') else Limiter();exports=Exporter(store,root/'exports')
+    if deployment is not None:
+        from .control_store import ControlStore
+        root=deployment.control_dir
+        store=ControlStore(root)
+        limiter=RedisLimiter(deployment.redis_url,namespace='bigbase:limits:'+deployment.identity.deployment_id)
+    else:
+        root=Path(root or os.environ.get('BIGBASE_DATA','var')).resolve();root.mkdir(parents=True,exist_ok=True);root.chmod(0o700)
+        store=Store(root/'development.sqlite3')
+        limiter=RedisLimiter(os.environ['BIGBASE_REDIS_URL']) if os.environ.get('BIGBASE_REDIS_URL') else Limiter()
+    security=Security(store,root);exports=Exporter(store,root/'exports')
     imports=Importer(store)
     executor=ThreadPoolExecutor(max_workers=1,thread_name_prefix='bigbase-jobs')
     @asynccontextmanager
     async def lifespan(app):
-        with store.transaction() as c: pending=[j['id'] for j in store.all(c,'job') if j['status'] in {'pending','preparing'}]
+        with store.transaction() as c: pending=[] if deployment else [j['id'] for j in store.all(c,'job') if j['status'] in {'pending','preparing'}]
         for id in pending:executor.submit(exports.run,id)
-        with store.transaction() as c: pending_imports=[j['id'] for j in store.all(c,'import_job') if j['status'] in {'pending','processing'}]
+        with store.transaction() as c: pending_imports=[] if deployment else [j['id'] for j in store.all(c,'import_job') if j['status'] in {'pending','processing'}]
         for id in pending_imports:executor.submit(imports.run,id)
         async def housekeeping():
             while True:
-                await run_in_threadpool(exports.cleanup_expired)
+                if deployment is None:await run_in_threadpool(exports.cleanup_expired)
                 await asyncio.sleep(3600)
         cleaner=asyncio.create_task(housekeeping())
         async def rotation_housekeeping():
@@ -72,8 +89,13 @@ def create_app(root=None,testing=False,*,canonical_reads=None):
                 except asyncio.CancelledError:pass
             executor.shutdown(wait=True)
             if isinstance(limiter,RedisLimiter):limiter.close()
+            if deployment is not None:canonical_reads.close()
+            if deployment is not None:store.close()
     app=FastAPI(title='BIG BASE',version='0.1.0',docs_url='/api/docs',openapi_url='/api/openapi.json',lifespan=lifespan)
-    app.state.store=store;app.state.security=security;app.state.exports=exports;app.state.imports=imports;app.state.job_executor=executor
+    if deployment is not None:
+        from starlette.middleware.trustedhost import TrustedHostMiddleware
+        app.add_middleware(TrustedHostMiddleware,allowed_hosts=list(deployment.allowed_hosts))
+    app.state.store=store;app.state.deployment=deployment;app.state.security=security;app.state.exports=exports;app.state.imports=imports;app.state.job_executor=executor
     with store.transaction() as c:
         if not store.get(c,'source','manual'):store.put(c,'source',{'id':'manual','name':'Cadastro manual','active':True})
     @app.middleware('http')
@@ -94,9 +116,20 @@ def create_app(root=None,testing=False,*,canonical_reads=None):
                 request._body=getattr(request,'_body',b'')+chunk
         if request.method in {'POST','PATCH','PUT'} and is_json_content_type(request.headers.get('content-type')):
             try:
-                load_preserving_json(getattr(request,'_body',b''))
+                if (request.method == 'POST' and request.url.path in {'/api/v1/canonical/people/enrich', '/api/v1/canonical/companies/enrich'}) or (request.method == 'PATCH' and re.fullmatch(r'/api/v1/canonical/(people|companies)/[^/]+/items/[^/]+/value', request.url.path)):
+                    from .canonical_store import decode
+                    decode(getattr(request,'_body',b''))
+                else:
+                    load_preserving_json(getattr(request,'_body',b''))
             except IngressJSONError as exc:return JSONResponse({'detail':str(exc),'code':exc.code,'request_id':rid},422)
             except (ValueError,UnicodeDecodeError,RecursionError):return JSONResponse({'detail':'JSON inválido, profundo demais ou com número não finito','request_id':rid},422)
+        if deployment is not None and (re.match(r'^/api/v1/(?:people|companies|imports|bulk-queries|saved-searches)(?:/|$)',request.url.path)
+                or (request.url.path.startswith('/api/v1/admin/fields') and request.method not in {'GET','HEAD'})):
+            def unavailable():
+                with store.transaction() as c:auth(c,request,'read')
+            try:await run_in_threadpool(unavailable)
+            except HTTPException as exc:return JSONResponse({'detail':exc.detail},exc.status_code,headers=exc.headers)
+            return JSONResponse({'detail':{'code':'CANONICAL_OPERATION_REQUIRED','message':'Use as rotas /api/v1/canonical. Importação e exportação canônicas ainda não habilitadas.'}},503)
         response=await call_next(request)
         response.headers.update({'X-Request-ID':rid,'X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'"})
         return response
@@ -149,8 +182,20 @@ def create_app(root=None,testing=False,*,canonical_reads=None):
         return project(e)
     from .canonical_http import install_canonical_reads, maintain_canonical_cursors
     install_canonical_reads(app, canonical_reads, store=store, security=security, auth=auth, audit=audit)
+    from .canonical_enrichment import install_canonical_writes
+    install_canonical_writes(app, canonical_reads, store=store, auth=auth, source_check=source_check)
+    from .canonical_validation import install_canonical_validation
+    install_canonical_validation(app, canonical_reads, store=store, auth=auth, source_check=source_check)
+    from .canonical_scalar_patch import install_canonical_scalar_patch
+    install_canonical_scalar_patch(app, canonical_reads, store=store, auth=auth, source_check=source_check)
+    from .canonical_catalog import install_canonical_catalog
+    install_canonical_catalog(app, canonical_reads, store=store, security=security, auth=auth)
     @app.get('/api/v1/health')
-    def health():return {'status':'ok','environment':'isolated-development','production_connected':False}
+    def health():
+        if deployment is not None:
+            try:return deployment.health(canonical_reads)
+            except Exception:return JSONResponse({'status':'unavailable','environment':deployment.identity.environment,'runtime':'deployed','canonical_connected':False},503)
+        return {'status':'ok','environment':'isolated-development','production_connected':False}
     @app.post('/api/v1/auth/activate')
     def activate(body:dict):
         if not isinstance(body.get('token'),str) or not isinstance(body.get('password'),str):raise HTTPException(422,'Informe convite e nova senha')
@@ -164,7 +209,7 @@ def create_app(root=None,testing=False,*,canonical_reads=None):
     def otp(body:OTP,response:Response):
         with store.transaction() as c:
             challenge_limit(c,body.challenge);token,result=security.complete(c,body.challenge,body.code);audit(c,result['user'],'login',result['user']['id'])
-        response.set_cookie('bigbase_session',token,httponly=True,secure=not (testing or os.environ.get('BIGBASE_LOCAL_HTTP')=='1'),samesite='strict',max_age=43200)
+        response.set_cookie('bigbase_session',token,httponly=True,secure=deployment is not None or not (testing or os.environ.get('BIGBASE_LOCAL_HTTP')=='1'),samesite='strict',max_age=43200)
         return result
     @app.get('/api/v1/auth/me')
     def me(request:Request):
@@ -274,7 +319,9 @@ def create_app(root=None,testing=False,*,canonical_reads=None):
     @app.get('/api/v1/stats')
     def stats(request:Request):
         with store.transaction() as c:
-            auth(c,request,'read');es=store.all(c,'entity');jobs=store.all(c,'job')
+            auth(c,request,'read')
+            if deployment is not None:return {'available':False,'people':None,'companies':None,'items':None,'observations':None,'pending':None,'storage_mode':'canonical'}
+            es=store.all(c,'entity');jobs=store.all(c,'job')
             return {'people':sum(e['entity_type']=='person' for e in es),'companies':sum(e['entity_type']=='company' for e in es),'items':sum(len(e['items']) for e in es),'observations':sum(len(e['observations']) for e in es),'pending':sum(o.get('pending_reason') is not None for e in es for o in e['observations'])}
     @app.post('/api/v1/{collection}/enrich')
     def enrich(collection:str,body:Enrichment,request:Request):
@@ -337,7 +384,7 @@ def create_app(root=None,testing=False,*,canonical_reads=None):
         with store.transaction() as c:
             user,key=auth(c,request,'read' if kind in {'sources','fields','api-keys'} else 'admin');rows=store.all(c,types[kind])
             if kind=='users':rows=[security.public(x) for x in rows]
-            if kind=='fields':rows=[public_definition(x) for x in rows]
+            if kind=='fields':rows=[] if deployment else [public_definition(x) for x in rows]
             if kind=='api-keys':
                 security.human_session(c,request,user,key)
                 rows=[security.public_api_key(x) for x in rows if x['user_id']==user['id'] or 'admin' in user['permissions']]
@@ -476,6 +523,12 @@ def create_app(root=None,testing=False,*,canonical_reads=None):
             audit(c,u,'download',id)
         artifact=j.get('artifact','xlsx');media='application/zip' if artifact=='zip' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         return FileResponse(root/'exports'/(id+'.'+artifact),filename='BIG_BASE_'+id[:8]+'.'+artifact,media_type=media)
+    if deployment is not None:
+        for route in app.routes:
+            path=getattr(route,'path','')
+            if (path.startswith(('/api/v1/{collection}/','/api/v1/people/','/api/v1/companies/',
+                    '/api/v1/imports','/api/v1/bulk-queries','/api/v1/saved-searches','/api/v1/admin/fields'))):
+                route.include_in_schema=False
     frontend=Path(__file__).resolve().parents[2]/'frontend'/'dist'
     if frontend.exists():app.mount('/',StaticFiles(directory=frontend,html=True),name='panel')
     return app

@@ -6,7 +6,7 @@ explicit subset and never acknowledges an outbox event before publication proof.
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import re
@@ -19,7 +19,7 @@ import httpx
 from .canonical_store import json_text
 
 
-PROJECTION_VERSION = "canonical-search-2026-09-08.2"
+PROJECTION_VERSION = "canonical-search-2026-09-09.1"
 MAX_VERSION = 2**63 - 1
 MAX_TEXT_BYTES = 8192
 MAX_DOCUMENT_BYTES = 8 * 1024 * 1024
@@ -27,6 +27,7 @@ MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_NESTED_OBJECTS = 9000
 FLAGS = ("valid", "is_whatsapp", "ownership_confirmed", "deliverable", "residence_confirmed")
 FIELDS = {
+    "custom": {"value"},
     "identity": {"name", "legal_name", "trade_name", "birth_date", "death_date", "sex", "nationality", "opening_date"},
     "document": {"number", "type", "country", "issuer", "state", "syntax_valid"},
     "phone": {"number", "type", "phone_type", "usage", "extension", "country", "national_number", "area_code", "syntax_valid"},
@@ -38,7 +39,89 @@ FIELDS = {
 }
 DATE_FIELDS = {"birth_date", "death_date", "opening_date", "from", "until"}
 PENDING = {"pending", "ambiguous", "unclassified"}
-OMISSIONS = ("unknown_items", "unknown_fields", "unsupported_values", "unsafe_text", "long_text", "unknown_flags", "metadata")
+OMISSIONS = ("unknown_items", "unknown_fields", "unsupported_values", "unsafe_text", "long_text", "unknown_flags", "metadata", "unbound_custom_fields")
+
+CUSTOM_CONTRACTS = {"canonical-custom-field-2026-09-09.1", "canonical-postgresql-field-2026-09-09.1"}
+CUSTOM_TYPES = {"text", "integer", "decimal", "boolean", "date", "enum", "url", "reference"}
+
+
+def custom_selector(metadata):
+    """Bind search to the immutable definition, never to its mutable current label.
+
+    Returning None records an unclassified value; damaged bindings fail the whole
+    publication so that the outbox cannot acknowledge an unverifiable document.
+    This does not mark a catalogue or a deployed index ready.
+    """
+    if not isinstance(metadata, dict):
+        raise ProjectionError("INVALID_CUSTOM_DEFINITION")
+    definition = metadata.get("field_definition")
+    if definition is None:
+        if any(key in metadata for key in ("field_definition", "field_definition_version",
+                                          "field_definition_sha256", "custom_field", "catalog_deployment_id")):
+            raise ProjectionError("INVALID_CUSTOM_DEFINITION")
+        return None
+    contract = metadata.get("custom_field", {})
+    if (not isinstance(definition, dict) or not isinstance(contract, dict)
+            or definition.get("id") != metadata.get("field_id")
+            or type(metadata.get("field_definition_version")) is not int
+            or definition.get("version") != metadata.get("field_definition_version")
+            or contract.get("field_id") != definition.get("id")
+            or type(contract.get("version")) is not int
+            or contract.get("version") != definition.get("version")
+            or _hash(definition) != metadata.get("field_definition_sha256")):
+        raise ProjectionError("INVALID_CUSTOM_DEFINITION")
+    selector = {"field_id": definition.get("id"), "version": definition.get("version"),
+                "sha256": metadata["field_definition_sha256"], "type": definition.get("type"),
+                "contract": contract.get("contract"),
+                "deployment_id": metadata.get("catalog_deployment_id")}
+    _custom_selector_key(selector)
+    return selector
+
+
+def _custom_selector_key(selector):
+    if (not isinstance(selector, dict)
+            or set(selector) != {"field_id", "version", "sha256", "type", "contract", "deployment_id"}
+            or not isinstance(selector["field_id"], str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}", selector["field_id"])
+            or type(selector["version"]) is not int or not 1 <= selector["version"] <= MAX_VERSION
+            or not isinstance(selector["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", selector["sha256"])
+            or not isinstance(selector["type"], str) or selector["type"] not in CUSTOM_TYPES
+            or not isinstance(selector["contract"], str) or selector["contract"] not in CUSTOM_CONTRACTS):
+        raise ProjectionError("INVALID_CUSTOM_SELECTOR")
+    if selector["contract"] == "canonical-postgresql-field-2026-09-09.1":
+        if _uuid(selector["deployment_id"]) != selector["deployment_id"]:
+            raise ProjectionError("INVALID_CUSTOM_SELECTOR")
+    elif selector["deployment_id"] is not None:
+        raise ProjectionError("INVALID_CUSTOM_SELECTOR")
+    return _hash(selector)
+
+
+def _custom_value(value, kind):
+    # Decimal strings are an explicit catalogue input format. Only the search
+    # token is converted; the original observation and metadata stay untouched.
+    if value is None:
+        return value
+    good = False
+    if kind in {"text", "enum", "url"}:
+        good = type(value) is str
+    elif kind == "integer":
+        good = type(value) is int
+    elif kind == "boolean":
+        good = type(value) is bool
+    elif kind == "decimal":
+        if isinstance(value, str) and len(value) <= MAX_TEXT_BYTES and re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value):
+            try:
+                value = Decimal(value)
+            except InvalidOperation:
+                raise ProjectionError("CUSTOM_VALUE_TYPE_MISMATCH") from None
+        good = type(value) is int or isinstance(value, Decimal) and value.is_finite()
+    elif kind == "date":
+        good = isinstance(value, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is not None
+        if good:
+            _date(value)
+    if not good:
+        raise ProjectionError("CUSTOM_VALUE_TYPE_MISMATCH")
+    return value
 
 
 class ProjectionError(ValueError):
@@ -181,6 +264,18 @@ def build_projection(entity: dict) -> dict:
         emitted = set()
         for field in sorted(item.get("fields", []), key=lambda row: (row["path"], str(row.get("observation_id")))):
             path = field["path"]
+            selector = None
+            if kind == "custom":
+                if path != "value":
+                    output["omitted"]["unknown_fields"] += 1
+                    continue
+                selector = custom_selector(field.get("metadata", {}))
+                if selector is None:
+                    output["omitted"]["unbound_custom_fields"] += 1
+                    continue
+                if selector["type"] == "reference":
+                    output["omitted"]["unsupported_values"] += 1
+                    continue
             candidates = [(path, field.get("value"), False)]
             if path == "target_document" and kind == "relationship" and isinstance(field.get("value"), dict):
                 candidates = [("target_document." + key, value, True) for key, value in sorted(field["value"].items())]
@@ -191,6 +286,8 @@ def build_projection(entity: dict) -> dict:
                 if key not in FIELDS[kind]:
                     output["omitted"]["unknown_fields"] += 1
                     continue
+                if selector:
+                    value = _custom_value(value, selector["type"])
                 scalar, reason = _scalar(value)
                 if reason:
                     output["omitted"][reason] += 1
@@ -223,7 +320,10 @@ def build_projection(entity: dict) -> dict:
                            "effective_at": _date(field.get("effective_at")), "received_at": _date(field.get("received_at")),
                            "metadata_json": metadata_json, "flags": flags,
                            "parent_valid": _flag(by_path.get((path, "valid")) if derived else None, resolved)}
-                if key in DATE_FIELDS and isinstance(value, str) and resolved:
+                if selector:
+                    current["custom_key"] = _custom_selector_key(selector)
+                    current["custom_definition_json"] = json_text(selector)
+                if (key in DATE_FIELDS or selector and selector["type"] == "date") and isinstance(value, str) and resolved:
                     try:
                         current["value_date"] = _date(value)
                     except ProjectionError:
@@ -251,6 +351,7 @@ def index_definition() -> dict:
     fields = {"key": keyword(), "value_type": keyword(), "value_exact": keyword(), "value_folded": keyword(),
               "value_text": {"type": "text", "analyzer": "bigbase_text"}, "value_contains": {"type": "wildcard"}, "value_boolean": {"type": "boolean"},
               "number_exact": keyword(), "value_date": timestamp(), "status": keyword(),
+              "custom_key": keyword(), "custom_definition_json": {"type": "text", "index": False},
               "resolved": {"type": "boolean"}, "confirmation_recorded": {"type": "boolean"}, "source_key": keyword(),
               "observation_id": keyword(), "effective_at": timestamp(), "received_at": timestamp(),
               "metadata_json": {"type": "text", "index": False},
@@ -306,23 +407,40 @@ def build_query(criteria: dict, *, entity_type: str | None = None, include_pendi
                                     ("username", "username"), ("address", "postal_code")})
 
     def field_query(kind, node, guarded):
-        if not isinstance(node, dict) or set(node) - {"field", "op", "value", "flags", "status", "source_id"} or "field" not in node:
+        if not isinstance(node, dict) or set(node) - {"field", "op", "value", "flags", "status", "source_id", "custom"} or "field" not in node:
             raise ProjectionError("INVALID_FIELD_QUERY")
         key, op = node["field"], node.get("op", "eq")
         if key not in FIELDS[kind] or op not in {"eq", "ieq", "prefix", "contains", "match", "range"} or "value" not in node:
             raise ProjectionError("UNSUPPORTED_FIELD_QUERY")
         value = node["value"]
         clauses = [{"term": {"items.fields.key": key}}]
+        date_field = key in DATE_FIELDS
+        if kind == "custom":
+            selector = node.get("custom")
+            clauses.append({"term": {"items.fields.custom_key": _custom_selector_key(selector)}})
+            custom_type = selector["type"]
+            date_field = custom_type == "date"
+            if custom_type == "reference":
+                raise ProjectionError("UNSUPPORTED_CUSTOM_REFERENCE_QUERY")
+            if op != "range":
+                value = _custom_value(value, custom_type)
+            if op not in {"eq", "range"} and custom_type not in {"text", "enum", "url"}:
+                raise ProjectionError("UNSUPPORTED_CUSTOM_OPERATOR")
+        elif "custom" in node:
+            raise ProjectionError("INVALID_CUSTOM_SELECTOR")
         if not include_pending:
             clauses.append({"term": {"items.fields.resolved": True}})
         if not include_invalid:
             clauses.append({"bool": {"must_not": [_live_flag("valid", False)]}})
             clauses.append({"bool": {"must_not": [_live_flag("valid", False, path="items.fields.parent_valid")]}})
         if op == "range":
-            if key not in DATE_FIELDS or not isinstance(value, dict) or not value or set(value) - {"gt", "gte", "lt", "lte"}:
+            if not date_field or not isinstance(value, dict) or not value or set(value) - {"gt", "gte", "lt", "lte"}:
                 raise ProjectionError("UNSUPPORTED_RANGE")
             if any(bound is None for bound in value.values()):
                 raise ProjectionError("INVALID_PROJECTION_DATE")
+            if kind == "custom":
+                for bound in value.values():
+                    _custom_value(bound, "date")
             clauses.append({"range": {"items.fields.value_date": {k: _date(v) for k, v in value.items()}}})
         else:
             scalar, reason = _scalar(value)

@@ -1,0 +1,257 @@
+{
+  "run_id": "20260909T001607-4629de3df04b4e43bb5a41e2d26f9949",
+  "checked_at": "2026-09-09T00:44:54.233157+00:00",
+  "status": "bounded_block_passed",
+  "project_complete": false,
+  "block": "Dedicated canonical flag validation, explicit value observation binding and expiry display in synthetic HTTP/panel",
+  "base_commit": "13754d67fc6d17ca8029bd9f472dbcf8d9559090",
+  "environment": "Linode Ubuntu 26.04; bigbase; private real PostgreSQL 18.6; synthetic data only",
+  "backend": {
+    "tests": 1005,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "backend_warnings": 2,
+  "backend_duration_seconds": 592.32,
+  "backend_command": ".venv/bin/pytest -q (scripts/run-verification.py)",
+  "backend_report": "var/validation/integration-20260909T002531Z-17791911/report.json",
+  "build": {
+    "name": "build",
+    "exit_code": 0,
+    "duration_seconds": 8.175,
+    "log": "var/validation/canonical-flags-20260909T001607/browser-final/build.log"
+  },
+  "precision": {
+    "tests": 14,
+    "failures": 0,
+    "skipped": 0
+  },
+  "imports_input": {
+    "tests": 9,
+    "failures": 0,
+    "skipped": 0
+  },
+  "sorting_compatibility": {
+    "tests": 6,
+    "status": "passed"
+  },
+  "browser": {
+    "status": "passed",
+    "groups": 25,
+    "checks": [
+      "OTP e primeiro acesso completos pelo navegador",
+      "Cadastro criado pelo formul\u00e1rio",
+      "Campo inteiro criado e zero preservado no cadastro pelo painel",
+      "Inteiro acima da precis\u00e3o JavaScript enviado e exibido sem arredondamento",
+      "Enriquecimento de email com hist\u00f3rico",
+      "Telefone legado tratado com entrada preservada e validade desconhecida no painel",
+      "Consulta em massa preparada e XLSX baixado",
+      "Grupo de filtros do mesmo item aplicado no painel",
+      "Pesquisa salva e executada com os mesmos filtros",
+      "Ordena\u00e7\u00e3o m\u00faltipla: edi\u00e7\u00e3o, min/max, prioridades, remo\u00e7\u00e3o, p\u00e1gina/sele\u00e7\u00e3o reiniciadas e pesquisa reaberta",
+      "Exporta\u00e7\u00e3o da pesquisa mant\u00e9m os mesmos 30 IDs em ordem no XLSX baixado",
+      "Pesquisa antiga conserva desempate decrescente e requer edi\u00e7\u00e3o expl\u00edcita para novo contrato",
+      "Service worker ativo sem respostas da API no cache",
+      "Navega\u00e7\u00e3o m\u00f3vel sem overflow horizontal da p\u00e1gina",
+      "TOTP recente: expira\u00e7\u00e3o, cancelamento, replay rejeitado e convite retomado uma vez",
+      "Convite, senha pr\u00f3pria, OTP e acesso normal sem administra\u00e7\u00e3o",
+      "Administrador desativa e reativa usu\u00e1rio; sess\u00e3o revogada continua inv\u00e1lida",
+      "Rota\u00e7\u00e3o de chave: novo OTP, resposta perdida recuperada sem duplica\u00e7\u00e3o, transi\u00e7\u00e3o e revoga\u00e7\u00e3o da cadeia",
+      "Defini\u00e7\u00e3o editada e desativada com controle de vers\u00e3o",
+      "Importa\u00e7\u00e3o JSONL com erro isolado, enriquecimento de cadastro e resultados paginados no painel responsivo",
+      "Leitura can\u00f4nica PostgreSQL pelo painel: pessoa/empresa, corte paginado, origem/hist\u00f3rico, precis\u00e3o/null/false/zero, responsividade e limpeza ao trocar contexto",
+      "Escrita can\u00f4nica PostgreSQL: cria\u00e7\u00e3o e enriquecimento de pessoa/empresa, m\u00faltiplos itens, decimal exato, validade false, hist\u00f3rico e vers\u00e3o pelo painel",
+      "Valida\u00e7\u00e3o can\u00f4nica dedicada: pessoa/empresa, valor decimal exato, resposta perdida e repeti\u00e7\u00e3o idempotente, vencimento sem false e nenhuma observa\u00e7\u00e3o de valor adicional",
+      "Painel permanece utiliz\u00e1vel com cat\u00e1logo antigo at\u00e9 rein\u00edcio administrativo, sem enviar sorts ignor\u00e1vel",
+      "POST de logout sem corpo encerra a sess\u00e3o e devolve o painel ao login"
+    ],
+    "duration_seconds": 133.126,
+    "report": "var/validation/canonical-flags-20260909T001607/browser-final/report.json"
+  },
+  "evidence_composition": {
+    "integrated_attempt_status": "failed",
+    "backend_sources_unchanged_since_1005_pass": true,
+    "only_file_changed_after_backend_pass": [
+      "frontend/src/CanonicalValidation.tsx"
+    ],
+    "browser_sources_unchanged_before_after": true,
+    "full_backend_repeated_after_accessible_name_fix": false
+  },
+  "previous_attempts": [
+    {
+      "report": "var/validation/canonical-flags-20260909T001607/backend-initial.xml",
+      "tests": 127,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "scope": "Initial directed verification; before malformed legacy expiry read guard and its extra test"
+    },
+    {
+      "report": "var/validation/integration-20260909T002531Z-17791911/report.json",
+      "status": "failed_browser",
+      "backend_passed": 1005,
+      "reason": "Browser did not locate the validation flag selector by its accessible name; explicit aria-label added to both new selects. Build/browser repeated successfully."
+    }
+  ],
+  "activation": {
+    "origin": {
+      "restart_exit_code": 1,
+      "restart_error": "Failed to restart bigbase-development.service: Interactive authentication required.\nSee system logs and 'systemctl status bigbase-development.service' for details.\n",
+      "health": {
+        "status": "ok",
+        "environment": "isolated-development",
+        "production_connected": false
+      },
+      "canonical_flags_route": false,
+      "initial_openapi_probe": {
+        "url": "/openapi.json",
+        "status": 404
+      },
+      "openapi_url": "/api/openapi.json"
+    },
+    "linode": {
+      "restart_attempted": true,
+      "initial_probe_error": {
+        "url": "/openapi.json",
+        "status": 404
+      },
+      "openapi_url": "/api/openapi.json",
+      "health": {
+        "status": "ok",
+        "environment": "isolated-development",
+        "production_connected": false
+      },
+      "canonical_flags_route": true,
+      "service_state": "ActiveState=active\nSubState=running\nMainPID=54341\nExecMainStartTimestamp=Wed 2026-09-09 00:42:45 UTC\n",
+      "activation_verified": true
+    }
+  },
+  "activation_pending": true,
+  "activation_pending_reason": "Origin development restart requires interactive authentication; Linode activation verified; existing origin service preserved.",
+  "git": {
+    "commit_pending": true,
+    "publication_pending": true,
+    "reason": "Origin Git metadata read-only; no permissions/sandbox modified. Tested working files synchronized and checked by hashes separately."
+  },
+  "cleanup": {
+    "checked_at": "2026-09-09T00:43:11.821561+00:00",
+    "browser_and_backend_schemas_remaining": 0,
+    "test_port_closed": true,
+    "production_connected": false
+  },
+  "production_connected": false,
+  "migrated_real_records": 0,
+  "backup_copy_status": "direct_running_receipt_not_received",
+  "writes_enabled_by_default": false,
+  "canonical_auth_storage": "sqlite-local-single-process",
+  "source_files": {
+    "backend/bigbase/__init__.py": "767f0ce1b30e94c7de0a3f4a65b5be9121dccd8b594779d5c1371d8a287d2bdc",
+    "backend/bigbase/api.py": "46e5b0bf90701515e13d8ac2eac557b9aa6137b7d226f78f06f6ab9983b384ce",
+    "backend/bigbase/canonical_enrichment.py": "d7f032f78ae6e84a1cf26a08c900c82e47ee1023b84f0e0890afbef6bd6a7dff",
+    "backend/bigbase/canonical_http.py": "3b474a799ba2ed42f2da65155ebc7ab74b6d03502776867df49c7f9589fd4d86",
+    "backend/bigbase/canonical_reconciliation.py": "445d835d689d6cd7a36a28cd7a999135985879697ce7c4709eca3e5e1c56c242",
+    "backend/bigbase/canonical_search.py": "31f640ec7eb83c703da1b9dd81d6e63df44d791dc816977f159d38c11768c00e",
+    "backend/bigbase/canonical_search_reader.py": "1cd83ce57bf830db435fcbb8fab1b5ffe4df3f631dce768d9d6b7b5c7f6b9601",
+    "backend/bigbase/canonical_store.py": "e17018dd6168e5923e8f0655cf52130cfdf23e20fcb00debf78beac128622e8e",
+    "backend/bigbase/canonical_validation.py": "70839198e30f384c5dcbd54a13b1701a8e25a59b3ccedf347c0ef083da6aee54",
+    "backend/bigbase/catalogs.py": "12178b82dbe1253cd08a9199d0c6e111b0cebc635f4e80a97b8ba35da65d7d1e",
+    "backend/bigbase/cli.py": "f786b9534c5287e7faba80de55265d5f4e2fa5c462453f895bce00a4d21d15da",
+    "backend/bigbase/domain.py": "bbf841c51d9b64917a9186fcb3f52dd1c2f744b00b8025b4d80e92e8f093b095",
+    "backend/bigbase/enrichment.py": "b7a79d49ee6e34183dd6b76c424fda448e2908acc341ca4a2d39162db405fbcb",
+    "backend/bigbase/exports.py": "6ebb7064a35adda557a973115054fcf174589a530992e433005e8b7e26b8fd46",
+    "backend/bigbase/imports.py": "d733d756c1423ad542ecd7fe881377cbe82212793b827b5a52088c8730b3ebbd",
+    "backend/bigbase/ingress_json.py": "74b04d6a1c135168844a3fb7a22d568d32b616ee4668b254a43a995baf2e0ee1",
+    "backend/bigbase/migration.py": "4be09a945e22a7b55dbcdd95759f7eb9c848c4c047dfe2137838f54c380a5de3",
+    "backend/bigbase/migration_cli.py": "3994fa3e0de4d57b6f11313a4e7686c0695f8d3f6c34b60007290b0a18a111cd",
+    "backend/bigbase/migration_pilot.py": "337bee5ebc47383e7afe89bc5d0658ebd1eae7b0ee33cabdf37a71a5f6d2532e",
+    "backend/bigbase/migration_preflight.py": "0390bc75429d1070823d654d2b9c7f75de49f5188571d107b61435478c94d822",
+    "backend/bigbase/migration_transport.py": "3f70b12db7d8c072d1dc24e37b7ab8cfbbc53cfbde2e844a9fb864b3021f14a9",
+    "backend/bigbase/phone_rules.py": "bbf4e395a9e8cfd61f5e0538408121670f29427579453af2097bce2ae45eec71",
+    "backend/bigbase/rate_limit.py": "cd9b8a74f55ab4f84b1efa018157f3f26df05567a72cae9d0f3f787d9d0ec62c",
+    "backend/bigbase/relationships.py": "c55f8ab834468cd546a926c856d5e8c9552720698abad150ebd92d8ac8ea6358",
+    "backend/bigbase/search.py": "034ca77fde5ab20aaf7d64e01e189308deefc741c21c5e1bfe79ec9e9c23f4f3",
+    "backend/bigbase/security.py": "5b3e7d95b627887a67b3509adc46350ae1c301600c5941acd09a82a8b5dee875",
+    "backend/bigbase/sorting.py": "96643b1a3a653665ed2cef1e91dceb15430de08afe2b93f2299efef49ceae602",
+    "backend/bigbase/source_adapters.py": "a8fbee89a8d4e45764ca6cb625bd778c3ddbccc8e52d3d016b73dc82aefa0f61",
+    "backend/bigbase/store.py": "97563be6239b17a3187774f36405de80215cc34a568b9ca5799c8f1664482186",
+    "backend/tests/test_admin_stepup.py": "bfde1d9145e2cac355c2e37f8d5f451036a03dff4b202f7be0094c05f720485a",
+    "backend/tests/test_api_key_rotation.py": "2caa8f567c986e06c26fca37699f5d0c8a1c8303dd95cba9c2896ae742c94572",
+    "backend/tests/test_canonical_cursor_maintenance.py": "4c51cff2bfecb4ded17b91f0fefbf1761cdfd38b144f5e17c6479a465fdc1973",
+    "backend/tests/test_canonical_enrichment.py": "93d568bb8a5a471aa56754159b4dfe7cd9266b60d3cb37eeaf56adf1f429f2e7",
+    "backend/tests/test_canonical_http.py": "1bdea2b352f6e3a08e05ef32aacda9cbbf5b4f01d20dfc863b1f2f89ce88f84a",
+    "backend/tests/test_canonical_reconciliation.py": "3a76104e6342a31bf5503805cad3488a993ce01815f34b8331d0c3928b481722",
+    "backend/tests/test_canonical_search.py": "eb68c54a125dd1b65cdb8830bfca924c3858f0c7427634f793bb7e923e36976c",
+    "backend/tests/test_canonical_search_reader.py": "c93fb8b2a25387334dd95caa47606680085c535f95e87973105564b1c586c3e8",
+    "backend/tests/test_canonical_store.py": "8f9d2a27583816c2a5261c465f3dd986840d195b715f5e1bc6ffe7d8556689ab",
+    "backend/tests/test_canonical_store_pagination.py": "f6b549e0f201dbd57ea87c617d3f060726826078b6c52efc0b7bd77530ad3d68",
+    "backend/tests/test_canonical_validation.py": "3e5eb3796c8eb94834953457109a978e89af097ad511849e10dcf3d820388393",
+    "backend/tests/test_catalogs.py": "41e708266b0ac763a5a90ef8e098ab23dbb12e209a2fa507720f01350d55e124",
+    "backend/tests/test_confirmation_values.py": "fabc4ec80af90de4aab664421652d583dc25cc8d55daf2510a437bb4c9d4d675",
+    "backend/tests/test_flows.py": "f88c4b2688288b24ff13b98e8046f54078073f73b663bc6f2cc4ac2504585777",
+    "backend/tests/test_imports.py": "0799f9f03825c769e29c036b88299a954f939cf27e631f7cd31d27eba8012328",
+    "backend/tests/test_imports_api.py": "d28fc9209bd29544b9740157f0684bd19570965b508e91073e81b16cbee98d5b",
+    "backend/tests/test_ingress_json.py": "855c58598962cb87f89d4907a0b868b3b49deaa55c9e649fc5bd52e41e6aa49b",
+    "backend/tests/test_migration.py": "709227812e336d460b0cfc00ba77e6bc76161b0ec444da9ddbead840fe4b6528",
+    "backend/tests/test_migration_cli.py": "51578e8d1afdd931368cce8ef5b18338ae2e78d7ca31edbcd1f42eb26a67adca",
+    "backend/tests/test_migration_pilot.py": "ab92e103702c4c28324ddac0dc2853c744ede3d8eb3d1f0f5a1f564d87365ab3",
+    "backend/tests/test_migration_preflight.py": "0fd1dc1a9f4e4faab93d7b9a985ddc76963d5a6fb30cfa34bf2677c33f7a1f82",
+    "backend/tests/test_migration_transport.py": "e3dd47a1a9ebd0c95885a3357249fce051d48aaeaec7373491953ac4fed03619",
+    "backend/tests/test_phone_preservation_review.py": "8234b618f0c5eb220be240565a098ff570d751454d95be75a32ea8e306938a75",
+    "backend/tests/test_phone_rules.py": "734b64fe978c07fe7544a3755d4caa025047851a5a6c4238498125c2c49703fe",
+    "backend/tests/test_postgres_runtime_scripts.py": "fa601df2bd4a2d7ee5f5b272cbd4b08e5799a7edef1b03113b8b27f05283f3ea",
+    "backend/tests/test_preservation_regressions.py": "ecfb8f030a0bb43205efae4d6cb3968a01d0d269260e39b81753d36ec5105708",
+    "backend/tests/test_redis.py": "411f0dd349dc7b7a8e720de022e587bf7e73374c3b4b4e31d07a82d55d8a9e60",
+    "backend/tests/test_sorting.py": "5203f3f1b9f9da5c2ac42c93b7dcabde19e3e61106a8d863fa0d24f20fc81e47",
+    "backend/tests/test_source_adapters.py": "237f3c4d7ca900d29fc03cac6c7a8efeabd98ce8286a893bdf4676f70e046878",
+    "frontend/browser-test.mjs": "5018b66fa178abf814d0efe520bf6626115e3d203be12d11b6488b9cf6199fde",
+    "frontend/imports-input-test.mjs": "9d8c9765c026381dc4482eda3f394c56a66cbff40d4f61b2150e15ffcf6b6d1c",
+    "frontend/package-lock.json": "09d4b37dc18094491aaebf76ebef18173bd1a302a93cfe8f771e868a27fea661",
+    "frontend/package.json": "f278caf9ee7f0fd5c73077ab1c6f30c315ad39f336e551ee0246ad101203ab4b",
+    "frontend/precision-test.mjs": "dd3a85be5b358241748d6ee17108d3c955fb36f99799b0fef739134a1b114bba",
+    "frontend/public/icon.svg": "81c81669cdd33f934fc5832102bc8ba012a843547ed735057e1f9205ebb52e83",
+    "frontend/public/manifest.webmanifest": "dfa521d842223daf91a69559b00e2e194808b519f44dc85d2c1d5b6d2ef02b00",
+    "frontend/public/sw.js": "930e6b5e4813c76eddda692ef7b9ad7e245781bf870ac5a2f1fd79bca873250e",
+    "frontend/sorting-compat-test.mjs": "ed7ddc0834efec3643b1cc8d539ea93096214b39324cb1a0c0a8913d4b7f6186",
+    "frontend/src/CanonicalEnrichment.tsx": "de78a7bf5ed4ad57ca2f8d658ee158c21a55f3a974db0304aded92cd36fb21e4",
+    "frontend/src/CanonicalPanel.tsx": "d4b4eaa673ff03b5daadf6a9bc8e2deb4eed9443a5082830176edd839d8a8272",
+    "frontend/src/CanonicalValidation.tsx": "c32c413e8ca0ac9f1b849004f5853b3fb8895f7f57fe50cd09e5228130bf29fc",
+    "frontend/src/CustomValueEditor.tsx": "470ac398e1c0b85f30b7ee06282ba005f14159050aba8cc08f8d923da5d98911",
+    "frontend/src/ImportsPanel.tsx": "6973e310df78522227a4033f06d50e03e1d5617ad9d2c6b0267275c941b9a891",
+    "frontend/src/PhoneNormalizationDetails.tsx": "7659698bc6832a377435fb45a5b61534fe6188215bf21f031ddb9372094ea65f",
+    "frontend/src/SortEditor.tsx": "a344ba941dacfc4ff3fcfcdd313fa190ebeb167609993ed75e58a733cd941280",
+    "frontend/src/imports.css": "e6b69c8a9b4c94ba7fad1a128f86545f3aa35f4dabe0341a2bc9cb465d1586f6",
+    "frontend/src/main.tsx": "b90b07ebc38ef7a8804f5e61ddf724a87c22261dd3a4dbd08eda16aaf4153e54",
+    "frontend/src/precision.ts": "84c2a6819a6f4883abd7e68966e8c48de040329805b0621a0f3e90fe735eb389",
+    "frontend/src/style.css": "17e8270af7ce30e65a14f79e7f09429b1072c487c69c282aba1600693bf9730d",
+    "frontend/tsconfig.json": "231e39a163842a57dfac4d48ad4e76fef797c7350601c2341864157812db442a",
+    "frontend/vite.config.ts": "80fb6ba7d8390775936ec51b7505d038a7e6a5398783f7c8505789e3c98d53b0",
+    "infra/bigbase-development.service": "d2c1f87a3e65f6588d8bc56a4df835efe6b080f857904091eba4c22400fd7d60",
+    "infra/sql/001_canonical.sql": "bbf02483aa4f8ccea97f85a945097d153556eacd97566363c0252ba2ffad66de",
+    "pyproject.toml": "a850a931563933c518de3c05bfb2ae95637220e8a4910e5d04f57c7b6eec0645",
+    "requirements.lock": "e933cc50fb965f9b87fd7dac6293d0eb51bece4d0dcda5109f01f1e0c155cf58",
+    "scripts/browser-fixture.py": "fcf003f89be329ad89459f80d558c593f747209b10f0590a4523ca6fbdd11c7a",
+    "scripts/canonical_browser_fixture.py": "c023bae83aa33007786ab922e61691a08a41272c64dc884856572c57c2435727",
+    "scripts/prepare-postgres-test.sh": "6fbc50cc95ba96739ca6dc769aefc7a44772383d9cfb67fb2b26723c1bc54681",
+    "scripts/run-browser-tests.py": "5a231bfa6330f299983d6f6f779cd0afab75b87a226f38cac6fb7f5eeea109aa",
+    "scripts/run-local.sh": "f319b09176cf58995f2e419340d533039b589ec42deecbbfad486f49e7e16f00",
+    "scripts/run-postgres-tests.py": "27d806ac881b8a0a06280307c23096801d773d0fc2d74ed1fd18308f97b58c67",
+    "scripts/run-verification.py": "dcbe3811744bd1dcd1ed5ae2203b088a20f90279d74f64ce9752fc23632c80b4",
+    "scripts/validation-manifest.py": "9d044adfe0d047dba6cc0c6eae8f21ebb2501948971aa2c1389c8d46c88ef8e8"
+  },
+  "frontend_assets": {
+    "index.html": "69c5032c25fe1bd17f6b4a0a4c3ee680b35ea479df6ec9b7b2e7737c8035fe6d",
+    "icon.svg": "81c81669cdd33f934fc5832102bc8ba012a843547ed735057e1f9205ebb52e83",
+    "sw.js": "930e6b5e4813c76eddda692ef7b9ad7e245781bf870ac5a2f1fd79bca873250e",
+    "manifest.webmanifest": "dfa521d842223daf91a69559b00e2e194808b519f44dc85d2c1d5b6d2ef02b00",
+    "assets/index-TUTT_AoH.css": "72b7e7a20751386eb9bd67f282895e87b6168e2829779930820cc8dd5ad52691",
+    "assets/index-DXr818Jh.js": "7ead772e4886313682f525887740439211e309890b22214b3cc9acf4090fc48e"
+  },
+  "limitations": [
+    "Scalar-value PATCH by item/field and normalization/catalog integration pending",
+    "Canonical imports/exports, relationships and PostgreSQL authentication pending",
+    "Real Elasticsearch integration, definitive database deployment, pilot, migration, load and failover pending",
+    "Backup direct route has no final SHA256 receipt"
+  ],
+  "next_block": "Dedicated scalar-value PATCH by canonical item/field with version, idempotency, provenance, exact values and preservation of historical flag binding; HTTP and panel synthetic tests"
+}

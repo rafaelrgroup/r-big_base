@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "updated_at": "2026-09-09T06:01:34.195104+00:00",
+  "scope": "MAIN; synthetic deployment status; no active release changes",
+  "status": "passed",
+  "backend": {
+    "tests": 55,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "browser": {
+    "groups": 8,
+    "page_errors": 0,
+    "backend_exercised": false
+  },
+  "build": "passed",
+  "full_suite_run": false,
+  "postgres_test_run": false,
+  "deployment_performed": false,
+  "project_complete": false,
+  "commands": [
+    ".venv/bin/pytest -q backend/tests/test_runtime_status_freshness.py backend/tests/test_deployment_runtime.py",
+    "cd frontend && npm run build",
+    "cd frontend && node deployed-ui-test.mjs"
+  ],
+  "files": [
+    {
+      "path": "backend/bigbase/deployment.py",
+      "sha256": "9017213e68bdf41e46912bb7bc77dc50c043c3b4c7b1353400f5ce02703b465b"
+    },
+    {
+      "path": "backend/tests/test_deployment_runtime.py",
+      "sha256": "614313735e64f02e21ee8b9ab11311459ba799217a69075e0bfc66a0f8a283d6"
+    },
+    {
+      "path": "backend/tests/test_runtime_status_freshness.py",
+      "sha256": "e272032bca2cb4274d32182b5b467d0db339fd111318312cc2c5798592ecd20d"
+    },
+    {
+      "path": "frontend/src/RuntimeStatus.tsx",
+      "sha256": "1011380522897673404a1434c2d0c0cdc8a3e5d2f70dac3db18465d22e2d7fbb"
+    },
+    {
+      "path": "frontend/deployed-ui-test.mjs",
+      "sha256": "a5444831083f6a6edf8eac278ed4337c588adaf1fd839a5a0a0134c5107c7873"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "var/validation/runtime-freshness-20260909/backend-final.xml",
+      "sha256": "bf3532b6513f4c0fe152946e1821e94b2166b88bb4eeba81030804499b4b8cc0"
+    },
+    {
+      "path": "var/validation/runtime-freshness-20260909/backend-final.log",
+      "sha256": "58b1574e464107f8419e4285176cfb07b7eb615bf274c4db72c3ed681ca46e20"
+    },
+    {
+      "path": "var/validation/runtime-freshness-20260909/backend.xml",
+      "sha256": "fdea6c7a87deb37e46a91176b43881451c5c199ed3f2678b89380631b011dfd1"
+    },
+    {
+      "path": "var/validation/runtime-freshness-20260909/backend.log",
+      "sha256": "686f9642c9278beb56966562f4e2dd436a48a132151958078dfa1cc9645be817"
+    },
+    {
+      "path": "var/validation/runtime-freshness-20260909/build.log",
+      "sha256": "e460b9a69f558cf136f80d8aee44bfc83cf47f37f3cff5f2fd3d41a0eae10fda"
+    },
+    {
+      "path": "var/validation/runtime-freshness-20260909/browser.log",
+      "sha256": "159697e4c8ec67e0fa1b2791737b4147c2dc0cd52cf7eea995a2951512d6e341"
+    },
+    {
+      "path": "var/validation/runtime-freshness-20260909/browser-report.json",
+      "sha256": "a0a909e18a089186ae2bc5b8a64b32135cc9be9bc72160a6bae519440f3dfee3"
+    }
+  ]
+}

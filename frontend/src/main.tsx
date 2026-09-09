@@ -29,6 +29,7 @@ import QRCode from "qrcode";
 import { SortEditor, initialSort, sortForServer, legacySortFields, type SortSelection, type SortField } from "./SortEditor";
 import { ImportsPanel } from "./ImportsPanel";
 import { CanonicalPanel } from "./CanonicalPanel";
+import { RuntimeStatus } from "./RuntimeStatus";
 import { PhoneNormalizationDetails } from "./PhoneNormalizationDetails";
 import {
   parseApiJson,
@@ -610,6 +611,19 @@ function editorRow(node: Dict): Dict {
   };
 }
 function App() {
+  const [runtime, setRuntime] = useState<Dict | null>(null);
+  const [runtimeError, setRuntimeError] = useState(false);
+  const deployed = runtime?.runtime === "deployed";
+  async function refreshRuntime() {
+    try {
+      const value = await api("/health");
+      const canonicalRuntime = value.runtime === "deployed" && value.storage_mode === "canonical" && value.synthetic === false;
+      const developmentRuntime = value.environment === "isolated-development" && value.production_connected === false && value.runtime !== "deployed";
+      if (!canonicalRuntime && !developmentRuntime) throw new Error("Ambiente não reconhecido");
+      setRuntime(value); setRuntimeError(false);
+      if (value.runtime === "deployed") setView(current => ["canonical", "admin", "keys", "audit"].includes(current) ? current : "canonical");
+    } catch { setRuntimeError(true); }
+  }
   const [sortSelection, setSortSelection] = useState<SortSelection>(initialSort);
   const [sortFields, setSortFields] = useState<SortField[]>([]);
   function changeSort(value: SortSelection) {
@@ -681,14 +695,19 @@ function App() {
     return () => { pendingAdminAction.current = null; rotationAttempt.current = null; };
   }, [session?.user.id, session?.csrf]);
   useEffect(() => {
-    api("/auth/me")
+    const access = api("/auth/me")
       .then((j) => {
         csrf = j.csrf;
         setSession(j);
       })
-      .catch(() => {})
-      .finally(() => setReady(true));
+      .catch(() => {});
+    Promise.all([access, refreshRuntime()]).finally(() => setReady(true));
   }, []);
+  useEffect(() => {
+    if (!session || !runtime) return;
+    const timer = setInterval(() => { void refreshRuntime(); }, 30000);
+    return () => clearInterval(timer);
+  }, [session?.user.id, Boolean(runtime)]);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("theme", dark ? "dark" : "light");
@@ -782,10 +801,24 @@ function App() {
     return f;
   }
   async function load() {
-    if (!session) return;
+    if (!session || !runtime) return;
     const revision = ++loadRevision.current;
     setBusy(true);
     try {
+      if (deployed) {
+        const src = await api("/admin/sources");
+        if (revision !== loadRevision.current) return;
+        setSources(src.items);
+        if (view === "admin" || view === "keys") {
+          const tab = view === "keys" ? "api-keys" : adminTab === "fields" ? "users" : adminTab;
+          const result = await api("/admin/" + tab);
+          if (revision === loadRevision.current) setAdminRows(result.items);
+        } else if (view === "audit") {
+          const result = await api("/audit");
+          if (revision === loadRevision.current) setAdminRows(result.items);
+        }
+        return;
+      }
       const [s, src, definitions, catalog] = await Promise.all([
         api("/stats"),
         api("/admin/sources"),
@@ -843,6 +876,8 @@ function App() {
     };
   }, [
     session,
+    Boolean(runtime),
+    deployed,
     view,
     offset,
     query,
@@ -863,7 +898,7 @@ function App() {
     );
     return () => clearInterval(id);
   }, [view, session]);
-  useEffect(() => {
+  React.useLayoutEffect(() => {
     const userId = session?.user.id ?? null;
     if (previousUser.current === undefined) {
       previousUser.current = userId;
@@ -892,11 +927,12 @@ function App() {
     setBulkUpload(null);
     setNotice("");
     setError("");
-    setView("people");
+    setView(deployed ? "canonical" : "people");
     setOffset(0);
   }, [session?.user.id]);
   const can = (p: string) => session?.user.permissions.includes(p);
   function navigate(v: string) {
+    if (deployed && !["canonical", "admin", "keys", "audit"].includes(v)) v = "canonical";
     if (v !== view && ["keys", "admin", "audit"].includes(v)) { setAdminRows([]); loadRevision.current++; }
     if (v === "keys") setAdminTab("api-keys");
     setView(v);
@@ -1080,6 +1116,7 @@ function App() {
   }
   if (!ready) return <div className="loading">Carregando acesso…</div>;
   if (!session) return <Login onLogin={setSession} />;
+  if (!runtime) return <main className="loading"><p role="alert">Não foi possível conferir o ambiente do painel.</p><button onClick={() => { void refreshRuntime(); }}>Tentar novamente</button></main>;
   const title = (
     {
       people: "Pessoas",
@@ -1101,7 +1138,7 @@ function App() {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            navigate("people");
+            navigate(deployed ? "canonical" : "people");
           }}
         >
           <span className="mark">B</span> BIG BASE
@@ -1119,6 +1156,7 @@ function App() {
             ["audit", History, "Auditoria"],
             ["admin", ShieldCheck, "Administração"],
           ]
+            .filter(([id]) => !deployed || ["canonical", "keys", "audit", "admin"].includes(String(id)))
             .filter(
               ([id]) =>
                 !["admin", "audit"].includes(String(id)) || can("admin"),
@@ -1139,8 +1177,8 @@ function App() {
             ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="env-dot" /> Desenvolvimento isolado
-          <p>Somente dados de teste</p>
+          <div className="env-dot" /> {deployed ? runtime.environment === "production" ? "Ambiente de produção" : "Base canônica · implantação" : "Desenvolvimento isolado"}
+          <p>{deployed ? runtime.migration_complete === true ? "Carga verificada" : "Carga integral ainda não confirmada" : "Somente dados de teste"}</p>
         </div>
         <div className="user">
           <span className="avatar">
@@ -1194,6 +1232,7 @@ function App() {
           </div>
         </header>
         <main>
+          {deployed && <RuntimeStatus runtime={runtime} unavailable={runtimeError} refresh={() => { void refreshRuntime(); }} />}
           <div className="page-head">
             <div>
               <span className="eyebrow">
@@ -1209,7 +1248,7 @@ function App() {
                       ? "Consulte, agregue informações e acompanhe cada origem."
                       : view === "audit"
                         ? "Registro de acessos e operações, preservado por evento."
-                        : "Gerencie acessos, fontes e definições do cadastro."}
+                        : view === "canonical" ? "Consulte informações, fontes e histórico da base unificada." : "Gerencie acessos, fontes e definições do cadastro."}
               </p>
             </div>
             {["people", "companies"].includes(view) && can("enrich") && (
@@ -1818,7 +1857,7 @@ function App() {
                   ["sources", "Fontes"],
                   ["fields", "Campos adicionais"],
                   ["api-keys", "Chaves de API"],
-                ].map(([id, label]) => (
+                ].filter(([id]) => !deployed || id !== "fields").map(([id, label]) => (
                   <button
                     key={id}
                     className={adminTab === id ? "active" : ""}
@@ -1963,7 +2002,7 @@ function App() {
               canEnrich={can("enrich")}
             />
           )}
-          {view === "canonical" && <CanonicalPanel key={session.user.id} api={api} />}
+          {view === "canonical" && <CanonicalPanel key={session.user.id} api={api} deployed={deployed} />}
           {view === "audit" && (
             <section className="card">
               <div className="table-wrap">

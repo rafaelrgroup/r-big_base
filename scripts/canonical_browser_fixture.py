@@ -11,6 +11,7 @@ from psycopg import sql
 from bigbase.api import create_app as application
 from bigbase.canonical_http import CanonicalReads, validate_synthetic_dsn
 from bigbase.canonical_store import CanonicalStore, digest
+from bigbase.canonical_catalog import initialize_catalog
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,6 +32,7 @@ def repository():
 def prepare():
     store = repository()
     store.initialize(environment='synthetic')
+    initialize_catalog(store)
     source = 'browser-canonical-synthetic'
     work = store.create_job(uuid4().hex, source)
     values = [None, False, 0, Decimal('12345678901234567890.12345678901234567890'), 'NUL\x00preservado']
@@ -62,7 +64,7 @@ def cleanup():
 
 def create_app():
     store = repository()
-    reads = CanonicalReads(store,expected_deployment_id=store.deployment_info()['deployment_id'])
+    reads = CanonicalReads(store,expected_deployment_id=store.deployment_info()['deployment_id'], writes_enabled=True)
     return application(ROOT/'var/browser-test', canonical_reads=reads)
 
 

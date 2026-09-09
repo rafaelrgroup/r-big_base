@@ -76,14 +76,14 @@ try{
  await modal.getByLabel('Campo cadastrado').selectOption({label:fieldName});
  await modal.getByLabel('Valor do campo',{exact:true}).fill('0');
  await modal.getByRole('button',{name:'Salvar informação'}).click();
- await page.locator('.item-card').filter({hasText:fieldName}).locator('dd').filter({hasText:/^0/}).waitFor();
+ await page.locator('.item-card').filter({hasText:fieldName}).locator('dt').filter({hasText:/^Valor$/}).locator('..').locator('dd').filter({hasText:/^0/}).waitFor();
  checks.push('Campo inteiro criado e zero preservado no cadastro pelo painel');
  await page.getByRole('button',{name:'Agregar informação',exact:true}).click();
  await modal.getByLabel('Tipo de informação').selectOption('custom');
  await modal.getByLabel('Campo cadastrado').selectOption({label:fieldName});
  await modal.getByLabel('Valor do campo',{exact:true}).fill('9007199254740993');
  await modal.getByRole('button',{name:'Salvar informação'}).click();
- await page.locator('.item-card').filter({hasText:fieldName}).locator('dd').filter({hasText:/^9007199254740993/}).waitFor();
+ await page.locator('.item-card').filter({hasText:fieldName}).locator('dt').filter({hasText:/^Valor$/}).locator('..').locator('dd').filter({hasText:/^9007199254740993/}).waitFor();
  checks.push('Inteiro acima da precisão JavaScript enviado e exibido sem arredondamento');
  await page.getByRole('button',{name:'Agregar informação',exact:true}).click();
  await modal.getByLabel('Tipo de informação').selectOption('email');
@@ -378,9 +378,69 @@ try{
  await page.screenshot({path:'../var/browser-test/imports-mobile.png',fullPage:true});
  await page.setViewportSize({width:1440,height:1050});
  checks.push('Importação JSONL com erro isolado, enriquecimento de cadastro e resultados paginados no painel responsivo');
+ // Create an active catalog definition through the real synthetic administration UI.
+ const canonicalDefinitionName='Inteiro canônico sintético '+Date.now();
+ await page.getByRole('button',{name:'Administração',exact:true}).click();
+ await page.getByRole('button',{name:'Campos adicionais',exact:true}).click();
+ await page.getByRole('button',{name:'Adicionar',exact:true}).click();
+ await page.locator('dialog').getByLabel('Nome',{exact:true}).fill(canonicalDefinitionName);
+ await page.locator('dialog').getByLabel('Tipo',{exact:true}).selectOption('integer');
+ const canonicalDefinitionResponse=page.waitForResponse(r=>r.url().endsWith('/admin/fields')&&r.request().method()==='POST');
+ await page.locator('dialog').getByRole('button',{name:'Criar',exact:true}).click();
+ const canonicalDefinition=await (await canonicalDefinitionResponse).json();
+ await expect(page.getByText(canonicalDefinitionName,{exact:true})).toBeVisible();
  // Canonical data is prepared only in this run's private PostgreSQL schema.
  const canonicalFixture=JSON.parse(readFileSync('../var/browser-test/canonical-fixture.json','utf8'));
  await page.getByRole('button',{name:'Consulta canônica',exact:true}).click();
+ // Catalog mutations use the actual PostgreSQL fixture and a fresh human OTP.
+ const pgCatalog=page.getByRole('region',{name:'Catálogo PostgreSQL sintético',exact:true});
+ const pgReceipt=pgCatalog.getByRole('status').filter({hasText:'Definição registrada'});
+ await expect(pgCatalog).toBeVisible();
+ syntheticAdminGrant(true);
+ await pgCatalog.getByLabel('Nome da definição PostgreSQL',{exact:true}).fill('Inteiro PostgreSQL sintético');
+ // Same identifier as SQLite deliberately proves that catalogs stay separate.
+ await pgCatalog.getByLabel('ID da definição PostgreSQL',{exact:true}).fill(canonicalDefinition.id);
+ await pgCatalog.getByLabel('Tipo da definição PostgreSQL',{exact:true}).selectOption('integer');
+ await pgCatalog.getByRole('button',{name:'Salvar definição PostgreSQL',exact:true}).click();
+ await expect(pgCatalog.getByLabel('OTP do catálogo',{exact:true})).toBeVisible();
+ await pgCatalog.getByLabel('OTP do catálogo',{exact:true}).fill(await freshAdminCode());
+ await pgCatalog.getByRole('button',{name:'Confirmar OTP e salvar definição',exact:true}).click();
+ await expect(pgReceipt).toContainText('Definição registrada · versão 1');
+ const pgCatalogPattern='**/api/v1/canonical/fields/'+canonicalDefinition.id;
+ let pgCatalogKey=null,pgCatalogAttempts=0;
+ await page.route(pgCatalogPattern,async route=>{
+   const key=route.request().headers()['idempotency-key'];
+   if(pgCatalogKey&&key!==pgCatalogKey)throw Error('Catálogo perdeu chave idempotente');
+   pgCatalogKey=key;pgCatalogAttempts++;
+   const response=await route.fetch();
+   if(!response.ok())throw Error('Alteração do catálogo sintético falhou');
+   const receipt=await response.json();
+   if(pgCatalogAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Resposta do catálogo perdida após commit'})});
+   else {if(!receipt.replayed||receipt.definition.version!==2)throw Error('Replay do catálogo divergente');await route.fulfill({response});}
+ });
+ await pgCatalog.getByLabel('Nome da definição PostgreSQL',{exact:true}).fill('Inteiro PostgreSQL renomeado');
+ await pgCatalog.getByRole('button',{name:'Salvar definição PostgreSQL',exact:true}).click();
+ await expect(pgCatalog.getByRole('alert')).toContainText('Resposta do catálogo perdida após commit');
+ await pgCatalog.getByRole('button',{name:'Salvar definição PostgreSQL',exact:true}).click();
+ await expect(pgReceipt).toContainText('versão 2 · repetição confirmada');
+ await page.unroute(pgCatalogPattern);
+ if(pgCatalogAttempts!==2)throw Error('Replay do catálogo não exercitado');
+ await pgCatalog.getByLabel('Definição PostgreSQL ativa',{exact:true}).uncheck();
+ await pgCatalog.getByRole('button',{name:'Salvar definição PostgreSQL',exact:true}).click();
+ await expect(pgReceipt).toContainText('Definição registrada · versão 3');
+ await pgCatalog.getByLabel('Definição PostgreSQL ativa',{exact:true}).check();
+ await pgCatalog.getByRole('button',{name:'Salvar definição PostgreSQL',exact:true}).click();
+ await expect(pgReceipt).toContainText('Definição registrada · versão 4');
+ await pgCatalog.getByRole('button',{name:'Histórico da definição PostgreSQL',exact:true}).click();
+ await expect(pgCatalog.locator('article')).toHaveCount(4);
+ await expect(pgCatalog.locator('article').first()).toContainText('Inteiro PostgreSQL sintético · ativo · integer');
+ await expect(pgCatalog.locator('article').nth(2)).toContainText('Inteiro PostgreSQL renomeado · inativo · integer');
+ for(const article of await pgCatalog.locator('article').all())await expect(article.locator('code')).toHaveText(/^[a-f0-9]{64}$/);
+ const unchangedLocalDefinition=await context.request.get('http://127.0.0.1:18767/api/v1/admin/fields');
+ if(!unchangedLocalDefinition.ok())throw Error('Catálogo local indisponível');
+ const localDefinition=(await unchangedLocalDefinition.json()).items.find(d=>d.id===canonicalDefinition.id);
+ if(localDefinition?.version!==1||localDefinition?.name!==canonicalDefinitionName)throw Error('Catálogo PostgreSQL alterou definição SQLite');
+ checks.push('Catálogo PostgreSQL: OTP recente, criação/renomeação/inativação/reativação, histórico com SHA256, replay após commit e isolamento do mesmo ID no SQLite');
  await page.getByLabel('Origem canônica',{exact:true}).fill(canonicalFixture.source_id);
  await page.getByLabel('ID na origem',{exact:true}).fill('person-1');
  await page.getByRole('button',{name:'Abrir ficha canônica',exact:true}).click();
@@ -420,6 +480,415 @@ try{
  await expect(page.getByRole('alert').filter({hasText:'Cadastro canônico não encontrado.'})).toBeVisible();
  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true})).toHaveCount(0);
  checks.push('Leitura canônica PostgreSQL pelo painel: pessoa/empresa, corte paginado, origem/histórico, precisão/null/false/zero, responsividade e limpeza ao trocar contexto');
+ // New canonical writes use only the browser-owned synthetic schema and auth.
+ for(const collection of ['people','companies']) {
+  await page.getByLabel('Tipo de cadastro',{exact:true}).selectOption(collection);
+  const writer=page.getByRole('region',{name:'Enriquecimento canônico',exact:true});
+  await writer.getByLabel('Origem da escrita',{exact:true}).fill('manual');
+  await writer.getByLabel('Referência do cadastro na origem',{exact:true}).fill('browser-write-'+collection);
+  const first=writer.getByRole('group',{name:'Observação 1',exact:true});
+  await first.getByLabel('Valor',{exact:true}).fill('Cadastro fictício '+collection);
+  await first.getByLabel('Observado em, com fuso horário',{exact:true}).fill('2026-01-01T00:00:00Z');
+  await writer.getByRole('button',{name:'Adicionar observação',exact:true}).click();
+  const second=writer.getByRole('group',{name:'Observação 2',exact:true});
+  await second.getByLabel('Grupo',{exact:true}).selectOption('custom');
+  await second.getByLabel('Referência do item',{exact:true}).fill('exact-number');
+  await second.getByLabel('Campo',{exact:true}).fill('amount');
+  await second.getByLabel('Tipo do valor',{exact:true}).selectOption('number');
+  await second.getByLabel('Valor',{exact:true}).fill('12345678901234567890.12345678901234567890');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 1$/})).toBeVisible();
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Histórico canônico'}).getByText('12345678901234567890.12345678901234567890',{exact:true})).toHaveCount(2);
+  // The editor keeps the identity actually submitted after creation.
+  await expect(writer.getByLabel('Origem da escrita',{exact:true})).toHaveValue('manual');
+  await expect(writer.getByLabel('Referência do cadastro na origem',{exact:true})).toHaveValue('browser-write-'+collection);
+  await first.getByLabel('Valor',{exact:true}).fill('Nome fictício atualizado '+collection);
+  await first.getByLabel('Observado em, com fuso horário',{exact:true}).fill('2026-02-01T00:00:00Z');
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('valid');
+  await first.getByLabel('Resultado da confirmação',{exact:true}).selectOption('false');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 2$/})).toBeVisible();
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Histórico canônico'}).locator('article')).toHaveCount(4);
+  await page.getByRole('button',{name:'Campos da ficha',exact:true}).click();
+  const amountRow=page.getByRole('region',{name:'Campos canônicos',exact:true}).locator('article').filter({has:page.getByRole('heading',{name:'amount · value',exact:true})});
+  await amountRow.getByRole('button',{name:'Validar este valor',exact:true}).click();
+  const validation=page.getByRole('region',{name:'Validação canônica',exact:true});
+  await expect(validation).toContainText('12345678901234567890.12345678901234567890');
+  await validation.getByLabel('Flag da validação',{exact:true}).selectOption('is_whatsapp');
+  await validation.getByLabel('Resultado da validação',{exact:true}).selectOption('true');
+  await validation.getByLabel('Motivo da validação',{exact:true}).fill('Evidência fictícia para testar associação exata');
+  await validation.getByLabel('Verificada em, com fuso',{exact:true}).fill('2026-03-01T00:00:00Z');
+  await validation.getByLabel('Vence em, com fuso',{exact:true}).fill('2026-04-01T00:00:00Z');
+  await validation.getByLabel('Método da validação',{exact:true}).fill('Ensaio de navegador');
+  let firstValidationKey=null, validationAttempts=0;
+  const validationPattern='**/api/v1/canonical/'+collection+'/*/items/*/flags';
+  await page.route(validationPattern,async route=>{
+    const key=route.request().headers()['idempotency-key'];
+    if(firstValidationKey && key!==firstValidationKey)throw Error('Repetição perdeu chave idempotente da validação');
+    firstValidationKey=key;validationAttempts++;
+    const response=await route.fetch();
+    if(!response.ok())throw Error('Validação PostgreSQL não foi aplicada: '+response.status());
+    if(validationAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Resposta sintética perdida após commit'})});
+    else {
+      const receipt=await response.json();
+      if(!receipt.replayed || receipt.observations_created!==1 || receipt.record_version!==3)throw Error('Recibo repetido da validação divergente');
+      await route.fulfill({response});
+    }
+  });
+  await validation.getByRole('button',{name:'Registrar validação canônica',exact:true}).click();
+  await expect(validation.getByRole('alert')).toContainText('Resposta sintética perdida após commit');
+  await validation.getByRole('button',{name:'Registrar validação canônica',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 3$/})).toBeVisible();
+  await page.unroute(validationPattern);
+  if(validationAttempts!==2)throw Error('Número inesperado de tentativas de validação');
+  const expiredRow=page.getByRole('region',{name:'Campos canônicos',exact:true}).locator('article').filter({has:page.getByRole('heading',{name:'amount · flag:is_whatsapp',exact:true})});
+  await expect(expiredRow.getByText('Confirmação desatualizada',{exact:true})).toBeVisible();
+  await expect(expiredRow.locator('dt').filter({hasText:/^Valor aplicável$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('true');
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  const flagHistory=page.getByRole('region',{name:'Histórico canônico',exact:true});
+  await expect(flagHistory.locator('article')).toHaveCount(5);
+  await expect(flagHistory.getByRole('heading',{name:/ · value$/})).toHaveCount(3);
+  // Directed editing needs only the owner/item/field, not the source record identity.
+  await page.getByRole('button',{name:'Campos da ficha',exact:true}).click();
+  await amountRow.getByRole('button',{name:'Editar este valor',exact:true}).click();
+  const scalar=page.getByRole('region',{name:'Edição escalar canônica',exact:true});
+  await expect(scalar.getByLabel('Novo valor JSON',{exact:true})).toHaveValue('12345678901234567890.12345678901234567890');
+  await scalar.getByLabel('Novo valor JSON',{exact:true}).fill('98765432109876543210.98765432109876543210');
+  await scalar.getByLabel('Observação da edição, com fuso',{exact:true}).fill('2026-05-01T00:00:00Z');
+  await scalar.getByLabel('Motivo da edição',{exact:true}).fill('Correção sintética direcionada');
+  let scalarKey=null,scalarAttempts=0;
+  const scalarPattern='**/api/v1/canonical/'+collection+'/*/items/*/value';
+  await page.route(scalarPattern,async route=>{
+    const key=route.request().headers()['idempotency-key'];
+    if(scalarKey && key!==scalarKey)throw Error('Edição perdeu chave idempotente');
+    scalarKey=key;scalarAttempts++;
+    const response=await route.fetch();
+    if(!response.ok())throw Error('Edição PostgreSQL falhou: '+response.status());
+    if(scalarAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Resposta de edição perdida após commit'})});
+    else {
+      const receipt=await response.json();
+      if(!receipt.replayed || receipt.record_version!==4 || receipt.observations_created!==1)throw Error('Recibo de edição divergente');
+      await route.fulfill({response});
+    }
+  });
+  await scalar.getByRole('button',{name:'Registrar valor canônico',exact:true}).click();
+  await expect(scalar.getByRole('alert')).toContainText('Resposta de edição perdida após commit');
+  await scalar.getByRole('button',{name:'Registrar valor canônico',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 4$/})).toBeVisible();
+  await page.unroute(scalarPattern);
+  if(scalarAttempts!==2)throw Error('Tentativas de edição divergentes');
+  await expect(amountRow.locator('dt').filter({hasText:/^Valor aplicável$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('98765432109876543210.98765432109876543210');
+  await expect(expiredRow.locator('dt').filter({hasText:/^Valor aplicável$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('null');
+  await expect(expiredRow.locator('dt').filter({hasText:/^Confirmação associada ao valor atual$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('false');
+  for(const [index,literal] of ['false','0','null'].entries()) {
+    await amountRow.getByRole('button',{name:'Editar este valor',exact:true}).click();
+    await scalar.getByLabel('Novo valor JSON',{exact:true}).fill(literal);
+    await scalar.getByLabel('Observação da edição, com fuso',{exact:true}).fill('2026-06-0'+(index+1)+'T00:00:00Z');
+    await scalar.getByRole('button',{name:'Registrar valor canônico',exact:true}).click();
+    await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:new RegExp('versão '+(5+index)+'$')})).toBeVisible();
+    await expect(amountRow.locator('dt').filter({hasText:/^Valor aplicável$/}).locator('xpath=following-sibling::dd[1]')).toHaveText(literal);
+  }
+  const nameRow=page.getByRole('region',{name:'Campos canônicos',exact:true}).locator('article').filter({has:page.getByRole('heading',{name:'name · value',exact:true})});
+  await expect(nameRow.locator('dt').filter({hasText:/^Valor aplicável$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('Nome fictício atualizado '+collection);
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  await expect(flagHistory.locator('article')).toHaveCount(9);
+  await expect(flagHistory.getByRole('heading',{name:/ · value$/})).toHaveCount(7);
+  await expect(flagHistory.getByRole('button',{name:'Editar este valor',exact:true})).toHaveCount(0);
+
+  // Explicit phone normalization keeps the input, context and old-value flag.
+  await expect(writer.getByRole('group',{name:/^Observação \d+$/})).toHaveCount(1);
+  await first.getByLabel('Grupo',{exact:true}).selectOption('phone');
+  await first.getByLabel('Referência do item',{exact:true}).fill('normalized-phone');
+  await first.getByLabel('Campo',{exact:true}).fill('number');
+  await first.getByLabel('Valor',{exact:true}).fill('88765432');
+  await first.getByLabel('Observado em, com fuso horário',{exact:true}).fill('2026-07-01T00:00:00Z');
+  await first.getByLabel('Normalização do telefone',{exact:true}).selectOption('phone');
+  await first.getByLabel('País do telefone',{exact:true}).fill('BR');
+  await first.getByLabel('DDD do telefone',{exact:true}).fill('11');
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('is_whatsapp');
+  await first.getByLabel('Resultado da confirmação',{exact:true}).selectOption('true');
+  let phoneKey=null, phoneAttempts=0;
+  const phonePattern='**/api/v1/canonical/'+collection+'/enrich';
+  await page.route(phonePattern,async route=>{
+    const key=route.request().headers()['idempotency-key'];
+    if(phoneKey && key!==phoneKey)throw Error('Normalização perdeu chave idempotente');
+    phoneKey=key;phoneAttempts++;
+    const response=await route.fetch();
+    if(!response.ok())throw Error('Normalização PostgreSQL falhou: '+response.status());
+    if(phoneAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Resposta da normalização perdida após commit'})});
+    else {
+      const receipt=await response.json();
+      if(!receipt.replayed || receipt.record_version!==8 || receipt.observations_created!==4)throw Error('Recibo de normalização divergente');
+      await route.fulfill({response});
+    }
+  });
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(writer.getByRole('alert')).toContainText('Resposta da normalização perdida após commit');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 8$/})).toBeVisible();
+  await page.unroute(phonePattern);
+  if(phoneAttempts!==2)throw Error('Tentativas de normalização divergentes');
+  await page.getByRole('button',{name:'Campos da ficha',exact:true}).click();
+  const phoneRow=page.getByRole('region',{name:'Campos canônicos',exact:true}).locator('article').filter({has:page.getByRole('heading',{name:'number · value',exact:true})});
+  await expect(phoneRow.getByText('Conversão histórica',{exact:true})).toBeVisible();
+  await expect(phoneRow.getByText('+5511988765432',{exact:true})).toBeVisible();
+  await expect(phoneRow.getByText('88765432',{exact:true})).toBeVisible();
+  await expect(nameRow.locator('dt').filter({hasText:/^Valor aplicável$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('Nome fictício atualizado '+collection);
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  const phoneFlag=flagHistory.locator('article').filter({has:page.getByRole('heading',{name:'number · flag:is_whatsapp',exact:true})});
+  await expect(phoneFlag.locator('dt').filter({hasText:/^Estado \/ aplicada$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('normalized / false');
+  // A second phone stays a separate item and unresolved input is visible.
+  await first.getByLabel('Referência do item',{exact:true}).fill('review-phone');
+  await first.getByLabel('País do telefone',{exact:true}).fill('');
+  await first.getByLabel('DDD do telefone',{exact:true}).fill('');
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 9$/})).toBeVisible();
+  await page.getByRole('button',{name:'Campos da ficha',exact:true}).click();
+  await expect(phoneRow).toHaveCount(2);
+  await expect(phoneRow.getByText('Revisão necessária',{exact:true})).toBeVisible();
+
+  // Email domain normalization preserves case/tags locally and flags by exact value.
+  await first.getByLabel('Grupo',{exact:true}).selectOption('email');
+  await first.getByLabel('Referência do item',{exact:true}).fill('normalized-email');
+  await first.getByLabel('Campo',{exact:true}).fill('email');
+  await first.getByLabel('Valor',{exact:true}).fill('First.Last+Tag@EXAMPLE.INVALID');
+  await first.getByLabel('Normalização do email',{exact:true}).selectOption('email');
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('deliverable');
+  await first.getByLabel('Resultado da confirmação',{exact:true}).selectOption('true');
+  let emailKey=null, emailAttempts=0;
+  await page.route(phonePattern,async route=>{
+    const key=route.request().headers()['idempotency-key'];
+    if(emailKey && key!==emailKey)throw Error('Email perdeu chave idempotente');
+    emailKey=key;emailAttempts++;
+    const response=await route.fetch();
+    if(!response.ok())throw Error('Email PostgreSQL falhou: '+response.status());
+    if(emailAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Resposta do email perdida após commit'})});
+    else {
+      const receipt=await response.json();
+      if(!receipt.replayed || receipt.record_version!==10 || receipt.observations_created!==2)throw Error('Recibo do email divergente');
+      await route.fulfill({response});
+    }
+  });
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(writer.getByRole('alert')).toContainText('Resposta do email perdida após commit');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 10$/})).toBeVisible();
+  await page.unroute(phonePattern);
+  if(emailAttempts!==2)throw Error('Tentativas do email divergentes');
+  await page.getByRole('button',{name:'Campos da ficha',exact:true}).click();
+  const emailRow=page.getByRole('region',{name:'Campos canônicos',exact:true}).locator('article').filter({has:page.getByRole('heading',{name:'email · value',exact:true})});
+  await expect(emailRow.getByText('Domínio normalizado',{exact:true})).toBeVisible();
+  await expect(emailRow.getByText('First.Last+Tag@example.invalid',{exact:true})).toBeVisible();
+  await expect(emailRow.getByText('First.Last+Tag@EXAMPLE.INVALID',{exact:true})).toBeVisible();
+  await expect(emailRow.getByText('First.Last+Tag',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  const emailFlag=flagHistory.locator('article').filter({has:page.getByRole('heading',{name:'email · flag:deliverable',exact:true})});
+  await expect(emailFlag.locator('dt').filter({hasText:/^Estado \/ aplicada$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('normalized / false');
+  await first.getByLabel('Referência do item',{exact:true}).fill('second-email');
+  await first.getByLabel('Valor',{exact:true}).fill('Second@EXAMPLE.INVALID');
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 11$/})).toBeVisible();
+  await page.getByRole('button',{name:'Campos da ficha',exact:true}).click();
+  await expect(emailRow).toHaveCount(2);
+  await expect(emailRow.getByText('Second@example.invalid',{exact:true})).toBeVisible();
+  await expect(phoneRow).toHaveCount(2);
+  await first.getByLabel('Referência do item',{exact:true}).fill('pending-email');
+  await first.getByLabel('Valor',{exact:true}).fill('incomplete@HOST');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 12$/})).toBeVisible();
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  const emailHistory=flagHistory.locator('article').filter({has:page.getByRole('heading',{name:'email · value',exact:true})});
+  await expect(emailHistory).toHaveCount(3);
+  await expect(emailHistory.getByText('Revisão necessária',{exact:true})).toBeVisible();
+
+  // Explicit postal context, exact flags and response recovery for both collections.
+  await first.getByLabel('Grupo',{exact:true}).selectOption('address');
+  await first.getByLabel('Referência do item',{exact:true}).fill('normalized-postal');
+  await first.getByLabel('Campo',{exact:true}).fill('postal_code');
+  await first.getByLabel('Valor',{exact:true}).fill('00123-456');
+  await first.getByLabel('Normalização postal',{exact:true}).selectOption('postal');
+  await first.getByLabel('País do código postal',{exact:true}).fill('BR');
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('residence_confirmed');
+  await first.getByLabel('Resultado da confirmação',{exact:true}).selectOption('true');
+  let postalKey=null, postalAttempts=0;
+  await page.route(phonePattern,async route=>{
+    const key=route.request().headers()['idempotency-key'];
+    if(postalKey && key!==postalKey)throw Error('CEP perdeu chave idempotente');
+    postalKey=key;postalAttempts++;
+    const response=await route.fetch();
+    if(!response.ok())throw Error('CEP PostgreSQL falhou: '+response.status());
+    if(postalAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Resposta postal perdida após commit'})});
+    else {
+      const receipt=await response.json();
+      if(!receipt.replayed || receipt.record_version!==13 || receipt.observations_created!==3)throw Error('Recibo postal divergente');
+      await route.fulfill({response});
+    }
+  });
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(writer.getByRole('alert')).toContainText('Resposta postal perdida após commit');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 13$/})).toBeVisible();
+  await page.unroute(phonePattern);
+  if(postalAttempts!==2)throw Error('Tentativas postais divergentes');
+  await page.getByRole('button',{name:'Campos da ficha',exact:true}).click();
+  const postalRow=page.getByRole('region',{name:'Campos canônicos',exact:true}).locator('article').filter({has:page.getByRole('heading',{name:'postal_code · value',exact:true})});
+  await expect(postalRow.getByText('CEP formatado',{exact:true})).toBeVisible();
+  await expect(postalRow.getByText('00123-456',{exact:true})).toBeVisible();
+  await expect(postalRow.locator('dt').filter({hasText:/^Valor aplicável$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('00123456');
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  const postalFlag=flagHistory.locator('article').filter({has:page.getByRole('heading',{name:'postal_code · flag:residence_confirmed',exact:true})});
+  await expect(postalFlag.locator('dt').filter({hasText:/^Estado \/ aplicada$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('normalized / false');
+  await first.getByLabel('Referência do item',{exact:true}).fill('international-postal');
+  await first.getByLabel('Valor',{exact:true}).fill('SW1A 1AA');
+  await first.getByLabel('País do código postal',{exact:true}).fill('GB');
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 14$/})).toBeVisible();
+  await page.getByRole('button',{name:'Campos da ficha',exact:true}).click();
+  await expect(postalRow).toHaveCount(2);
+  await expect(postalRow.getByText('Revisão postal necessária',{exact:true})).toBeVisible();
+  await expect(emailRow).toHaveCount(3);
+  await first.getByLabel('Referência do item',{exact:true}).fill('country-absent-postal');
+  await first.getByLabel('Valor',{exact:true}).fill('00999-999');
+  await first.getByLabel('País do código postal',{exact:true}).fill('');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 15$/})).toBeVisible();
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  // This record now has more than one history page. Exercise the explicit
+  // continuation instead of treating the first twenty observations as complete.
+  await expect(flagHistory.locator('article')).toHaveCount(20);
+  await flagHistory.getByRole('button',{name:'Próximas observações',exact:true}).click();
+  const postalHistory=flagHistory.locator('article').filter({has:page.getByRole('heading',{name:'postal_code · value',exact:true})});
+  await expect(postalHistory).toHaveCount(2);
+  await expect(postalHistory.getByText('Revisão postal necessária',{exact:true})).toHaveCount(2);
+  const unknownPostal=postalHistory.filter({hasText:'00999-999'});
+  await expect(unknownPostal.locator('dt').filter({hasText:/^País informado nesta operação$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('null');
+
+  // Separate accounts across and within platforms; unknown identifier rules stay literal.
+  await first.getByLabel('Grupo',{exact:true}).selectOption('username');
+  await first.getByLabel('Referência do item',{exact:true}).fill('username-instagram-1');
+  await first.getByLabel('Campo',{exact:true}).fill('username');
+  await first.getByLabel('Valor',{exact:true}).fill('@Synthetic.Case');
+  await first.getByLabel('Normalização de username',{exact:true}).selectOption('username');
+  await first.getByLabel('Plataforma da conta',{exact:true}).fill('Instagram');
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('ownership_confirmed');
+  await first.getByLabel('Resultado da confirmação',{exact:true}).selectOption('true');
+  let usernameKey=null, usernameAttempts=0;
+  await page.route(phonePattern,async route=>{
+    const key=route.request().headers()['idempotency-key'];
+    if(usernameKey && key!==usernameKey)throw Error('Username perdeu chave idempotente');
+    usernameKey=key;usernameAttempts++;
+    const response=await route.fetch();
+    if(!response.ok())throw Error('Username PostgreSQL falhou: '+response.status());
+    if(usernameAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Resposta username perdida após commit'})});
+    else {
+      const receipt=await response.json();
+      if(!receipt.replayed || receipt.record_version!==16 || receipt.observations_created!==3)throw Error('Recibo username divergente');
+      await route.fulfill({response});
+    }
+  });
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(writer.getByRole('alert')).toContainText('Resposta username perdida após commit');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 16$/})).toBeVisible();
+  await page.unroute(phonePattern);
+  if(usernameAttempts!==2)throw Error('Tentativas username divergentes');
+  // Reusing the same item for a different platform must roll back.
+  await first.getByLabel('Plataforma da conta',{exact:true}).fill('Telegram');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(writer.getByRole('alert')).toBeVisible();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 16$/})).toBeVisible();
+  await first.getByLabel('Referência do item',{exact:true}).fill('username-telegram-1');
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 17$/})).toBeVisible();
+  await first.getByLabel('Referência do item',{exact:true}).fill('username-instagram-2');
+  await first.getByLabel('Plataforma da conta',{exact:true}).fill('INSTAGRAM');
+  await first.getByLabel('Valor',{exact:true}).fill(' @Second.Case ');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 18$/})).toBeVisible();
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  await flagHistory.getByRole('button',{name:'Próximas observações',exact:true}).click();
+  const usernameHistory=flagHistory.locator('article').filter({has:page.getByRole('heading',{name:'username · value',exact:true})});
+  await expect(usernameHistory).toHaveCount(3);
+  await expect(usernameHistory.getByText('Username preservado literalmente',{exact:true})).toHaveCount(3);
+  await expect(usernameHistory.locator('dt').filter({hasText:/^Valor normalizado$/}).locator('xpath=following-sibling::dd[1]')).toHaveText(['@Synthetic.Case','@Synthetic.Case',' @Second.Case ']);
+  const platformHistory=flagHistory.locator('article').filter({has:page.getByRole('heading',{name:'platform · value',exact:true})});
+  await expect(platformHistory).toHaveCount(3);
+  await expect(platformHistory.locator('dt').filter({hasText:/^Valor normalizado$/}).locator('xpath=following-sibling::dd[1]')).toHaveText(['instagram','telegram','instagram']);
+
+  // Explicit type/version, useful rejection, durable replay and alternatives.
+  await first.getByLabel('Confirmação',{exact:true}).selectOption('');
+  await first.getByLabel('Grupo',{exact:true}).selectOption('custom');
+  await first.getByLabel('Referência do item',{exact:true}).fill('typed-integer');
+  await first.getByLabel('Definição do campo',{exact:true}).selectOption(canonicalDefinition.id);
+  await expect(first.getByLabel('Versão da definição',{exact:true})).toHaveValue('1');
+  await first.getByLabel('Tipo do valor',{exact:true}).selectOption('text');
+  await first.getByLabel('Valor',{exact:true}).fill('wrong type');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(writer.getByRole('alert')).toContainText('Valor incompatível');
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 18$/})).toBeVisible();
+  await first.getByLabel('Tipo do valor',{exact:true}).selectOption('number');
+  await first.getByLabel('Valor',{exact:true}).fill('0');
+  let typedKey=null,typedAttempts=0;
+  const typedPattern='**/api/v1/canonical/'+collection+'/enrich';
+  await page.route(typedPattern,async route=>{
+    const key=route.request().headers()['idempotency-key'];
+    if(typedKey&&key!==typedKey)throw Error('Campo tipado perdeu chave idempotente');
+    typedKey=key;typedAttempts++;
+    const response=await route.fetch();const receipt=await response.json();
+    if(!response.ok())throw Error('Escrita tipada sintética falhou');
+    if(typedAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Resposta tipada perdida após commit'})});
+    else {if(!receipt.replayed||receipt.record_version!==19)throw Error('Replay tipado divergente');await route.fulfill({response});}
+  });
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(writer.getByRole('alert')).toContainText('Resposta tipada perdida após commit');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 19$/})).toBeVisible();
+  await page.unroute(typedPattern);if(typedAttempts!==2)throw Error('Replay tipado não exercitado');
+  await first.getByLabel('Referência do item',{exact:true}).fill('typed-alternative');
+  await first.getByLabel('Valor',{exact:true}).fill('123456789012345678901234567890');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 20$/})).toBeVisible();
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  await flagHistory.getByRole('button',{name:'Próximas observações',exact:true}).click();
+  const typedHistory=flagHistory.locator('article').filter({has:page.locator('dt').filter({hasText:/^Definição do campo adicional$/})});
+  await expect(typedHistory).toHaveCount(2);
+  await expect(typedHistory.getByText('Definido / pendente',{exact:true})).toHaveCount(2);
+  await expect(typedHistory.locator('dt').filter({hasText:/^Valor normalizado$/}).locator('xpath=following-sibling::dd[1]')).toHaveText(['0','123456789012345678901234567890']);
+
+  // Accept the PostgreSQL definition explicitly, preserving the prior local observations.
+  await first.getByLabel('Catálogo da definição',{exact:true}).selectOption('postgresql');
+  await first.getByLabel('Definição do campo',{exact:true}).selectOption(canonicalDefinition.id);
+  await expect(first.getByLabel('Versão da definição',{exact:true})).toHaveValue('4');
+  await first.getByLabel('Referência do item',{exact:true}).fill('pg-typed-integer');
+  await first.getByLabel('Valor',{exact:true}).fill('9007199254740993');
+  await writer.getByRole('button',{name:'Registrar observações canônicas',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Ficha canônica',exact:true}).getByRole('heading',{name:/versão 21$/})).toBeVisible();
+  await page.getByRole('button',{name:'Histórico da ficha',exact:true}).click();
+  await flagHistory.getByRole('button',{name:'Próximas observações',exact:true}).click();
+  await expect(typedHistory).toHaveCount(3);
+  await expect(typedHistory.last()).toContainText('Inteiro PostgreSQL renomeado');
+  await expect(typedHistory.last().locator('dt').filter({hasText:/^Valor normalizado$/}).locator('xpath=following-sibling::dd[1]')).toHaveText('9007199254740993');
+
+ }
+ await page.setViewportSize({width:390,height:844});
+ if(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1))throw Error('Escrita canônica extrapolou viewport móvel');
+ await page.screenshot({path:'../var/browser-test/canonical-write-mobile.png',fullPage:true});
+ await page.setViewportSize({width:1440,height:1050});
+ checks.push('Escrita canônica PostgreSQL: criação e enriquecimento de pessoa/empresa, múltiplos itens, decimal exato, validade false, histórico e versão pelo painel');
+ checks.push('Validação canônica dedicada: pessoa/empresa, valor decimal exato, resposta perdida e repetição idempotente, vencimento sem false e nenhuma observação de valor adicional');
+ checks.push('PATCH escalar PostgreSQL: pessoa/empresa, decimal exato, false/zero/null, replay após commit, demais campos intactos e flags preservadas no valor antigo');
+ checks.push('Normalização canônica de telefones: pessoa/empresa, contexto explícito, conversão histórica, entrada preservada, revisão sem DDD, múltiplos contatos e replay sem transferir WhatsApp');
+ checks.push('Normalização canônica de emails: pessoa/empresa, domínio minúsculo, parte local e original preservados, múltiplos emails, revisão e replay sem transportar entregabilidade');
+ checks.push('Normalização postal canônica: pessoa/empresa, BR explícito, zeros/original, país ausente e código internacional literais, múltiplos endereços e replay sem transportar residência');
+ checks.push('Usernames canônicos: pessoa/empresa, plataformas distintas, múltiplas contas na mesma plataforma, literal exato, bloqueio de troca de plataforma e replay após resposta perdida');
+ checks.push('Campos adicionais canônicos: pessoa/empresa, definição e versão explícitas, erro de tipo, zero/inteiro exato, alternativas, histórico com definição e replay após commit');
+ checks.push('Enriquecimento com catálogo PostgreSQL pelo painel: pessoa/empresa, versão 4 explícita, inteiro exato e histórico local anterior preservado');
  // A panel build must remain usable until an older local API process is restarted.
  const catalogResponse=await context.request.get('http://127.0.0.1:18767/api/v1/search/catalog');
  if(!catalogResponse.ok())throw Error('Catálogo de preparação indisponível');
