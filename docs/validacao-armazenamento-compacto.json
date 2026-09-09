@@ -1,0 +1,58 @@
+{
+  "canonical_integration_complete": false,
+  "capacity_proven": false,
+  "errors": 0,
+  "failures": 0,
+  "files": [
+    {
+      "path": "experiments/compact_storage/README.md",
+      "sha256": "72919079d1efa23d09482c58c6f260402660d1cc8178d453a6e1e2201bcc0191"
+    },
+    {
+      "path": "experiments/compact_storage/block_codec.py",
+      "sha256": "9467b82a7e92138033d6cd33060539e44d9ca9c073f737cfebb2d4d171bff419"
+    },
+    {
+      "path": "experiments/compact_storage/derived_codec.py",
+      "sha256": "2e66f1e8b991d6dd965615d6aeb9e1757677cb4c9a6d6079634e591c01ab9337"
+    },
+    {
+      "path": "experiments/compact_storage/observation_codec.py",
+      "sha256": "516e8c297576794752721e42f91a4811f380322d7f4bd06d1279725e06580438"
+    },
+    {
+      "path": "experiments/compact_storage/postgres_block_experiment.py",
+      "sha256": "619f2d494ca4e38e732b6a44bf98b07b8d6f538a9492f8324b42cd5c1d257b72"
+    },
+    {
+      "path": "experiments/compact_storage/synthetic_samples.py",
+      "sha256": "500793009d99b62e31e2f90fe29d6e0583d28fa1d3b82b25e3005562b8179a76"
+    },
+    {
+      "path": "experiments/compact_storage/test_block_codec.py",
+      "sha256": "80baf52adf5fa4a0d5eb76f7d50bfb823dfab67c2f3ed4a9730877fa14fb7375"
+    },
+    {
+      "path": "experiments/compact_storage/test_derived_codec.py",
+      "sha256": "fc226a8ede406b4c3ee3b29c8a495a492615881a6cb1c9a42869db4453e54938"
+    },
+    {
+      "path": "experiments/compact_storage/test_postgres_block_experiment.py",
+      "sha256": "6e7122a425cd479857bb9ad63583251a91eb34848f7a0d8dfd1d0da64abea606"
+    },
+    {
+      "path": "experiments/compact_storage/test_wire_codec.py",
+      "sha256": "aee3cd6e5b175040239a6172d9a78d9f053c3591c10eb102f487afc135480c6a"
+    },
+    {
+      "path": "experiments/compact_storage/wire_codec.py",
+      "sha256": "1c2c5c1f2f60da7e63388a27fc7585221215626f466d986e48d80b6075abc4bd"
+    }
+  ],
+  "postgresql_fixture": "synthetic_private_unix_socket",
+  "production_data_changed": false,
+  "scope": "isolated_synthetic_compact_storage_experiment",
+  "skipped": 0,
+  "tests": 53,
+  "version": 1
+}
