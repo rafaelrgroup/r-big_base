@@ -8,6 +8,7 @@ from bigbase.source_adapters import map_record, reconcile_coverage
 from bigbase.canonical_store import _prepare
 from block_codec import Block, encode_block, CodecError, HEADER, ENTRY, MAGIC, CODEC
 from wire_codec import dumps
+from derived_codec import pack
 from synthetic_samples import record,add_event_metadata
 
 
@@ -66,3 +67,31 @@ def test_empty_and_overfull_blocks_fail_without_truncation():
 def test_source_coverage_includes_unknown_fields_and_empty_containers():
     source=record('wide',7);mapped=map_record('pessoas','synthetic-7',source,source_version='1:7')
     assert reconcile_coverage(source,Block(encode_block([mapped])).get(0))['passed']
+
+
+def test_multiple_flag_order_survives_and_is_covered_by_record_digest():
+    source=records('sparse',1)[0]
+    source['facts'][0]['flags']={'valid':{'value':None},'is_whatsapp':{'value':False},'confirmed':{'value':True}}
+    raw=encode_block([source]);decoded=Block(raw).get(0)
+    assert list(decoded['facts'][0]['flags'])==['valid','is_whatsapp','confirmed']
+    from wire_codec import loads
+    fields=list(HEADER.unpack_from(raw));payload=zlib.decompress(raw[HEADER.size:])
+    size,expanded,digest=ENTRY.unpack_from(payload)
+    envelope=loads(payload[ENTRY.size:ENTRY.size+size]);envelope[1][0][1]=['valid','confirmed','is_whatsapp']
+    modified=dumps(envelope);payload=ENTRY.pack(len(modified),expanded,digest)+modified
+    fields[4]=len(payload);fields[5]=hashlib.sha256(payload).digest()
+    with pytest.raises(CodecError,match='RECORD_INTEGRITY'):
+        Block(HEADER.pack(*fields)+zlib.compress(payload)).get(0)
+
+
+def legacy_block(source):
+    original=dumps(source);encoded=dumps(pack(source))
+    payload=ENTRY.pack(len(encoded),len(original),hashlib.sha256(original).digest())+encoded
+    return HEADER.pack(MAGIC,1,1,1,len(payload),hashlib.sha256(payload).digest())+zlib.compress(payload)
+
+
+def test_unambiguous_v1_remains_readable_but_ambiguous_order_is_refused():
+    source=records('sparse',1)[0]
+    assert dumps(Block(legacy_block(source)).get(0))==dumps(source)
+    source['facts'][0]['flags']={'valid':{'value':True},'is_whatsapp':{'value':False}}
+    with pytest.raises(CodecError):Block(legacy_block(source)).get(0)

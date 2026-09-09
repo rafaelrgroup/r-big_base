@@ -1,6 +1,6 @@
 # Matriz de implementação e validação
 
-Atualizada em 09/09/2026. Restauração do backup original aprovada em ambiente isolado; provas operacionais preservadas fora do Git. O novo servidor recebeu uma cópia validada do projeto. O destino agora dispõe de PostgreSQL dedicado, Redis privado e uma implantação separada do painel/API em ambiente canônico `staging`. As cinco fontes do backup foram restauradas na Linode, incluindo 476.401.269 entradas das duas fontes cadastrais. Em 09/09/2026 às 12:19 UTC, um novo piloto concluiu 10.000 entradas com reconciliação por campo, preservando as 6.910 conferidas na tentativa anterior. O destino contém 16.910 entidades neste corte; essa contagem não estima pessoas únicas na origem inteira. A projeção real de busca está sendo preenchida e sua ativação depende de comparação completa com o PostgreSQL. A migração integral continua condicionada ao piloto representativo, reconciliação por campo e validação de capacidade. **Não é entrega integral e os testes sintéticos abaixo não homologam a carga real.**
+Atualizada em 09/09/2026. Restauração do backup original aprovada em ambiente isolado; provas operacionais preservadas fora do Git. O novo servidor recebeu uma cópia validada do projeto. O destino agora dispõe de PostgreSQL dedicado, Redis privado e uma implantação separada do painel/API em ambiente canônico `staging`. As cinco fontes do backup foram restauradas na Linode, incluindo 476.401.269 entradas das duas fontes cadastrais. Em 09/09/2026 às 12:19 UTC, um novo piloto concluiu 10.000 entradas com reconciliação por campo, preservando as 6.910 conferidas na tentativa anterior. O destino contém 16.910 entidades neste corte; essa contagem não estima pessoas únicas na origem inteira. A busca das 16.910 entidades desse corte foi conferida e publicada às 13:02 UTC, preservando a indicação de campos adicionais ainda não pesquisáveis. A migração integral continua condicionada ao piloto representativo, reconciliação por campo e validação de capacidade. **Não é entrega integral e os testes sintéticos abaixo não homologam a carga real.**
 
 Bloco anterior validado na Linode: catálogo PostgreSQL sintético transacional,
 com **406 regressões de backend e 33 grupos de navegador** nesta rodada. Os
@@ -332,3 +332,35 @@ A aplicação informa cobertura parcial; XLSX canônico e migração integral
 permanecem desabilitados/não concluídos. O piloto canônico ocupa aproximadamente
 2,5 GB no PostgreSQL e 221 MB de índice, antes de translog, WAL e backups.
 Esses custos motivam a revisão de armazenamento/importação antes da carga maior.
+
+
+## Prioridade de dados e integração da rastreabilidade — 09/09/2026
+
+Novas funções web ficam após o núcleo de dados e a migração, conforme orientação
+do proprietário. A sequência e os critérios de adoção estão em
+[DADOS-E-MIGRACAO.md](DADOS-E-MIGRACAO.md).
+
+O repositório canônico agora compartilha uma função pura que produz a observação
+histórica e decide o estado vigente. O ensaio de reconstrução dos blocos usa a
+mesma função, mantendo a guarda de identidade/catálogo e a transação nos seus
+respectivos responsáveis. A comparação independente com o código da release
+anterior conferiu todas as colunas de 378 observações, em 126 operações fictícias
+de pessoas e empresas, além dos campos atuais e versões dos itens.
+
+A primeira comparação encontrou duas falhas: o codec ordenava as chaves das
+flags e mudava suas posições no histórico. O codec de bloco 2 registra a ordem
+explicitamente, inclui-a nos hashes e recusa blocos antigos cuja ordem não pode
+ser recuperada. Nenhum dado cadastral real usou esse protótipo.
+
+Validação final: **87 testes específicos** e **891 testes selecionados de
+cadastro/migração aprovados**. Na primeira rodada de regressão, oito testes de
+exportação foram ignorados porque faltava a variável do fixture dedicado; os
+mesmos oito passaram depois com o PostgreSQL fictício explicitamente configurado.
+Nenhum caso selecionado permaneceu sem execução. Suíte backend integral e testes
+de interface não foram reexecutados neste bloco. Provas e hashes:
+[validacao-nucleo-rastreabilidade.json](validacao-nucleo-rastreabilidade.json).
+
+O código desta etapa não ativa um novo layout de banco na aplicação publicada.
+Persistência compacta do estado, registro global de identidades, conflitos,
+fusão/desfusão, catálogo pesquisável completo, importação em escala e capacidade
+continuam pendentes. Não houve aumento da carga real nem homologação de 50 req/s.

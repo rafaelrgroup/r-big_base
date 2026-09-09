@@ -1,0 +1,107 @@
+{
+  "block_codec_version": 2,
+  "canonical_integration_complete": false,
+  "capacity_proven": false,
+  "comparison": {
+    "current_state_columns": "all",
+    "history_columns": "all",
+    "item_versions": true,
+    "synthetic_observations": 378,
+    "synthetic_operations": 126
+  },
+  "date": "2026-09-09",
+  "deployed_runtime_changed": false,
+  "files": [
+    {
+      "path": "backend/bigbase/canonical_store.py",
+      "sha256": "5321f54702bb75158f341b76166020fb795d04901799250a642d82422368703e"
+    },
+    {
+      "path": "backend/tests/test_canonical_observation_resolution.py",
+      "sha256": "07ec8c67ac67be0d920435c57b4d1c6966447430f6d88754de7290910a4745e9"
+    },
+    {
+      "path": "experiments/compact_storage/README.md",
+      "sha256": "a38e16a28af61e5c0d7eed9d7e85ec8d710302e4ae9ee0f49f3cc8050b8f0039"
+    },
+    {
+      "path": "experiments/compact_storage/block_codec.py",
+      "sha256": "57ede3bf1a9d536bfdfdb4cd66645bccb72253c5023617c126bea009dc817ce3"
+    },
+    {
+      "path": "experiments/compact_storage/derived_codec.py",
+      "sha256": "2e66f1e8b991d6dd965615d6aeb9e1757677cb4c9a6d6079634e591c01ab9337"
+    },
+    {
+      "path": "experiments/compact_storage/field_replay.py",
+      "sha256": "3aac0e6917c3bbf1ce21ca756d0db2e33a64e57373b9b9841a310ab5ce836a0f"
+    },
+    {
+      "path": "experiments/compact_storage/observation_codec.py",
+      "sha256": "516e8c297576794752721e42f91a4811f380322d7f4bd06d1279725e06580438"
+    },
+    {
+      "path": "experiments/compact_storage/postgres_block_experiment.py",
+      "sha256": "619f2d494ca4e38e732b6a44bf98b07b8d6f538a9492f8324b42cd5c1d257b72"
+    },
+    {
+      "path": "experiments/compact_storage/synthetic_samples.py",
+      "sha256": "500793009d99b62e31e2f90fe29d6e0583d28fa1d3b82b25e3005562b8179a76"
+    },
+    {
+      "path": "experiments/compact_storage/test_block_codec.py",
+      "sha256": "9a64b879ad46f804c4460490d35070786200fc2f38e58ea6b54aba7d87971d0c"
+    },
+    {
+      "path": "experiments/compact_storage/test_derived_codec.py",
+      "sha256": "fc226a8ede406b4c3ee3b29c8a495a492615881a6cb1c9a42869db4453e54938"
+    },
+    {
+      "path": "experiments/compact_storage/test_field_replay.py",
+      "sha256": "981d0970fa2fb8895a050b93a8668e97b24938046831a4bd0516611da9c363ea"
+    },
+    {
+      "path": "experiments/compact_storage/test_postgres_block_experiment.py",
+      "sha256": "6e7122a425cd479857bb9ad63583251a91eb34848f7a0d8dfd1d0da64abea606"
+    },
+    {
+      "path": "experiments/compact_storage/test_wire_codec.py",
+      "sha256": "aee3cd6e5b175040239a6172d9a78d9f053c3591c10eb102f487afc135480c6a"
+    },
+    {
+      "path": "experiments/compact_storage/wire_codec.py",
+      "sha256": "1c2c5c1f2f60da7e63388a27fc7585221215626f466d986e48d80b6075abc4bd"
+    }
+  ],
+  "full_migration_complete": false,
+  "identity_integration_complete": false,
+  "initial_attempt_preserved": {
+    "failed": 2,
+    "reason": "flag_insertion_order_changed_by_codec_v1",
+    "resolved_in_block_codec": 2,
+    "tests": 32
+  },
+  "production_data_changed": false,
+  "reference_store_sha256": "d1b541f11a04c229f5672d89d64f031441dc5b67a33b4c7315bdc80d8c13c209",
+  "regression": {
+    "completion_xml_sha256": "649451e7b38bbfc7bc5961964302aba74a9f26090acc6b5445215f86d3cf3c29",
+    "errors": 0,
+    "failures": 0,
+    "full_backend_suite": false,
+    "passed_first_run": 883,
+    "previously_skipped_passed_completion_run": 8,
+    "remaining_skipped": 0,
+    "selected_tests": 891,
+    "skipped_first_run": 8,
+    "xml_sha256": "49a94931d2839a30c6768a82516df0aafbdd458827862548d35a817c1b3b1666"
+  },
+  "scope": "shared_observation_resolver_and_compact_block_reconstruction",
+  "specific_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 87,
+    "xml_sha256": "45e423d917876fa48cd152c415ea874dc3b9dec08a14dec2b6a5c20358e4262d"
+  },
+  "version": 1
+}

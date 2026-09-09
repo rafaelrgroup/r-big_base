@@ -64,11 +64,31 @@ entradas de cinco faixas por fonte, blocos de 100 entradas ocuparam em média
 reconstrução e preparação canônica iguais. Isso mede somente a codificação em
 memória: não inclui índices, estado atual, ponteiros, WAL, backups ou busca, e a
 amostra não é estatisticamente representativa. Não extrapolar como capacidade.
+Essas medidas pertencem ao codec de bloco 1, no commit `7c21d39`; o codec 2
+acrescentou a preservação explícita da ordem das flags e precisa de nova medição
+junto com os demais componentes antes do dimensionamento.
 
 Critério para adoção: leitura e escrita completas com o novo repositório,
 reconstrução do estado, precedência temporal, flags vinculadas, alterações de
 coleções, deduplicação/conflitos, fusão/desfusão e histórico paginado equivalentes
 ao contrato. A prova de armazenamento isolada não satisfaz esse critério.
+
+Primeira integração concluída no código: extração da regra comum que produz a
+observação imutável e decide a substituição do estado atual. A reconstrução dos
+blocos usa essa regra e foi comparada ao código da implantação anterior, com
+igualdade de todas as colunas de 378 observações, em 126 operações fictícias de
+pessoas/empresas. A comparação identificou e corrigiu mudança da ordem das
+flags no codec inicial. Os 87 testes dessa etapa passaram, sem ignorados.
+Isso não ativa um novo repositório persistente nem aumenta a carga real.
+
+Próximo resultado concreto: integrar os blocos ao registro global de identidades
+e operações, persistir as referências do estado vigente, reconstruir a ficha e
+paginar o histórico. A chave de operação deve impedir duplicação entre trabalhos
+diferentes, e uma resposta perdida deve conservar o ator/data do primeiro commit.
+Conflitos de CPF/CNPJ, tipo de entidade ou titularidade devem produzir casos
+rastreáveis para resolução; associação por contato compartilhado não é válida.
+Confirmar atomicidade de identidade, histórico, estado, fila de indexação e
+checkpoint com falha injetada no meio do lote e reinício do processo.
 
 ### 2. Busca com custo controlado
 

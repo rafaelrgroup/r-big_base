@@ -313,6 +313,85 @@ def prepare_canonical_record(record: dict) -> dict:
     return _prepare(record)
 
 
+OBSERVATION_COLUMNS = (
+    "owner_id", "observation_id", "item_id", "operation_id", "source_fact_id_json",
+    "source_path_json", "target_path_hash", "target_path_json", "dimension",
+    "input_json", "input_type", "input_encoding", "normalized_json", "metadata_json",
+    "source_id_json", "source_updated_at", "observed_at", "effective_at",
+    "received_at", "actor_id_json", "status", "applied", "pending_reason",
+    "previous_observation_id", "previous_value_json", "binding_hash",
+    "entity_version", "operation_sequence", "source_id_hash", "item_version",
+)
+FIELD_STATE_COLUMNS = (
+    "owner_id", "item_id", "target_path_hash", "target_path_json", "dimension",
+    "observation_id", "value_json", "metadata_json", "status", "effective_at",
+    "received_at", "source_id_json", "binding_hash",
+)
+
+
+def resolve_canonical_observation(*, owner: UUID, item_id: UUID, operation_id: UUID,
+                                  source: str, actor: str, received: datetime, fact: dict,
+                                  previous: dict | None, value_state: dict | None = None,
+                                  flag_name: str | None = None, flag: dict | None = None,
+                                  entity_version: int, operation_sequence: int,
+                                  item_version: int) -> tuple[dict, dict | None]:
+    """Resolve one already validated atom without I/O or mutation of inputs.
+
+    Both storage layouts must use this decision: exact immutable observation,
+    plus an optional replacement of current state. A rejected/late observation
+    still produces its complete history. Identity, catalogue and transaction
+    guards remain the caller's responsibility. Returned mappings contain private
+    field values and must never be included in operational logs.
+    """
+    raw = fact["raw"]
+    dimension = "flag:" + flag_name if flag_name else "value"
+    event_id = identifier("observation", [str(operation_id), fact["id"], dimension])
+    path_hash, path_json = digest(raw["target_path"]), json_text(raw["target_path"])
+    if previous and previous["target_path_json"] != path_json:
+        raise IdentityConflict("Field path hash collision requires manual investigation")
+    source_updated = _date(flag.get("source_updated_at")) if flag is not None else fact["source_updated_at"]
+    observed = _date(flag.get("observed_at")) if flag is not None else fact["observed_at"]
+    effective = source_updated or observed
+    applied, reason = _precedence(previous, effective, received, event_id)
+    if previous and fact["status"] == "pending" and previous["status"] != "pending":
+        applied, reason = False, "pending_against_resolved"
+    value_json = json_text(flag["value"]) if flag is not None else fact["normalized_json"]
+    input_json = value_json if flag is not None else fact["input_json"]
+    input_type = "null" if flag is not None and flag["value"] is None else "boolean" if flag is not None else fact["input_type"]
+    metadata_json = json_text(flag) if flag is not None else fact["metadata_json"]
+    binding_hash = None
+    if flag is not None:
+        # A transformation does not move evidence from the received value to
+        # a different canonical value. A caller with explicit evidence for
+        # the canonical value must supply that binding deliberately.
+        binding_json = flag.get("confirmed_value_json", fact["input_json"])
+        if not isinstance(binding_json, str):
+            raise CanonicalError("Flag confirmed_value_json must be a JSON literal")
+        # Binding compares decoded values canonically, while preserving the
+        # exact source literal in the observation metadata.
+        binding_hash = digest(decode(binding_json))
+        if not value_state or digest(decode(value_state["value_json"])) != binding_hash:
+            applied, reason = False, "value_mismatch"
+    observation = dict(zip(OBSERVATION_COLUMNS, (
+        owner, event_id, item_id, operation_id, json_text(fact["id"]),
+        json_text(raw["source_path"]), path_hash, path_json, dimension, input_json,
+        input_type, fact["input_encoding"] if flag is None else "canonical_value",
+        value_json, metadata_json, json_text(source), source_updated, observed,
+        effective, received, json_text(actor), fact["status"], applied, reason,
+        previous["observation_id"] if previous else None,
+        previous["value_json"] if previous else None, binding_hash, entity_version,
+        operation_sequence, digest(source), item_version,
+    ), strict=True))
+    state = None
+    if applied:
+        state = dict(zip(FIELD_STATE_COLUMNS, (
+            owner, item_id, path_hash, path_json, dimension, event_id, value_json,
+            metadata_json, fact["status"], effective, received, json_text(source),
+            binding_hash,
+        ), strict=True))
+    return observation, state
+
+
 class CanonicalStore:
     def __init__(self, dsn: str, schema: str = "bigbase_canonical"):
         if not dsn or not re.fullmatch(r"[a-z][a-z0-9_]{0,50}", schema):
@@ -734,50 +813,29 @@ class CanonicalStore:
     def _observe(self, c, owner: UUID, item_id: UUID, operation_id: UUID, source: str,
                  actor: str, received: datetime, fact: dict, flag_name: str | None = None, flag: dict | None = None,
                  *, entity_version: int, operation_sequence: int, item_version: int):
-        raw = fact["raw"]
+        path_hash = digest(fact["raw"]["target_path"])
         dimension = "flag:" + flag_name if flag_name else "value"
-        event_id = identifier("observation", [str(operation_id), fact["id"], dimension])
-        path_hash, path_json = digest(raw["target_path"]), json_text(raw["target_path"])
-        params = (owner, item_id, path_hash, dimension)
-        previous = c.execute("SELECT * FROM field_state WHERE owner_id=%s AND item_id=%s AND target_path_hash=%s AND dimension=%s", params).fetchone()
-        if previous and previous["target_path_json"] != path_json:
-            raise IdentityConflict("Field path hash collision requires manual investigation")
-        source_updated = _date(flag.get("source_updated_at")) if flag is not None else fact["source_updated_at"]
-        observed = _date(flag.get("observed_at")) if flag is not None else fact["observed_at"]
-        effective = source_updated or observed
-        applied, reason = _precedence(previous, effective, received, event_id)
-        if previous and fact["status"] == "pending" and previous["status"] != "pending":
-            applied, reason = False, "pending_against_resolved"
-        value_json = json_text(flag["value"]) if flag is not None else fact["normalized_json"]
-        input_json = value_json if flag is not None else fact["input_json"]
-        input_type = "null" if flag is not None and flag["value"] is None else "boolean" if flag is not None else fact["input_type"]
-        metadata_json = json_text(flag) if flag is not None else fact["metadata_json"]
-        binding_hash = None
+        previous = c.execute("SELECT * FROM field_state WHERE owner_id=%s AND item_id=%s AND target_path_hash=%s AND dimension=%s",
+                             (owner, item_id, path_hash, dimension)).fetchone()
+        value_state = None
         if flag is not None:
-            # A transformation does not move evidence from the received value to
-            # a different canonical value. A caller with explicit evidence for
-            # the canonical value must supply that binding deliberately.
-            binding_json = flag.get("confirmed_value_json", fact["input_json"])
-            if not isinstance(binding_json, str):
-                raise CanonicalError("Flag confirmed_value_json must be a JSON literal")
-            # Binding compares decoded values canonically, while preserving the
-            # exact source literal in the observation metadata.
-            binding_hash = digest(decode(binding_json))
-            value_state = c.execute("SELECT value_json FROM field_state WHERE owner_id=%s AND item_id=%s AND target_path_hash=%s AND dimension='value'", (owner, item_id, path_hash)).fetchone()
-            if not value_state or digest(decode(value_state["value_json"])) != binding_hash:
-                applied, reason = False, "value_mismatch"
+            value_state = c.execute("SELECT value_json FROM field_state WHERE owner_id=%s AND item_id=%s AND target_path_hash=%s AND dimension='value'",
+                                    (owner, item_id, path_hash)).fetchone()
+        observation, state = resolve_canonical_observation(
+            owner=owner, item_id=item_id, operation_id=operation_id, source=source,
+            actor=actor, received=received, fact=fact, previous=previous,
+            value_state=value_state, flag_name=flag_name, flag=flag,
+            entity_version=entity_version, operation_sequence=operation_sequence,
+            item_version=item_version,
+        )
         c.execute("""INSERT INTO observations(owner_id,observation_id,item_id,operation_id,source_fact_id_json,
                    source_path_json,target_path_hash,target_path_json,dimension,input_json,input_type,input_encoding,
                    normalized_json,metadata_json,source_id_json,source_updated_at,observed_at,effective_at,received_at,
                    actor_id_json,status,applied,pending_reason,previous_observation_id,previous_value_json,binding_hash,
                    entity_version,operation_sequence,source_id_hash,item_version)
                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                  (owner,event_id,item_id,operation_id,json_text(fact["id"]),json_text(raw["source_path"]),path_hash,path_json,
-                   dimension,input_json,input_type,fact["input_encoding"] if flag is None else "canonical_value",
-                   value_json,metadata_json,json_text(source),source_updated,observed,effective,received,json_text(actor),
-                   fact["status"],applied,reason,previous["observation_id"] if previous else None,
-                   previous["value_json"] if previous else None,binding_hash,entity_version,operation_sequence,digest(source),item_version))
-        if applied:
+                  tuple(observation[name] for name in OBSERVATION_COLUMNS))
+        if state is not None:
             c.execute("""INSERT INTO field_state(owner_id,item_id,target_path_hash,target_path_json,dimension,
                        observation_id,value_json,metadata_json,status,effective_at,received_at,source_id_json,binding_hash)
                        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
@@ -785,8 +843,7 @@ class CanonicalStore:
                        observation_id=EXCLUDED.observation_id,value_json=EXCLUDED.value_json,metadata_json=EXCLUDED.metadata_json,
                        status=EXCLUDED.status,effective_at=EXCLUDED.effective_at,received_at=EXCLUDED.received_at,
                        source_id_json=EXCLUDED.source_id_json,binding_hash=EXCLUDED.binding_hash""",
-                      (owner,item_id,path_hash,path_json,dimension,event_id,value_json,metadata_json,fact["status"],
-                       effective,received,json_text(source),binding_hash))
+                      tuple(state[name] for name in FIELD_STATE_COLUMNS))
 
     def get_entity(self, owner_id: str) -> dict:
         """Small/synthetic hydration, not a streaming endpoint for large histories."""
