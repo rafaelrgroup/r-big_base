@@ -314,3 +314,21 @@ revogação entre execução e commit e preservação da história. A extensão 
 instalada no banco cadastral nem exposta por HTTP. Seleção dos resultados,
 materialização consistente, geração/verificação do XLSX em fluxo e integração
 ao painel/API continuam pendentes; não declarar exportação canônica pronta.
+
+### Publicação da busca — 09/09/2026, 13:02 UTC
+
+A candidata de busca foi publicada após comparar as **16.910 entidades** do
+corte canônico por ID, versão e conteúdo, com zero faltantes, extras ou
+divergências. Os dois domínios confirmaram `search_enabled=true`; as rotas
+protegidas sem credenciais retornaram 401. A configuração manteve o mesmo
+armazenamento administrativo, contas e OTP. O consumidor periódico foi retomado
+para refletir os próximos enriquecimentos no índice.
+
+O índice mantém 142.634 campos adicionais desse corte fora da busca por ainda
+não possuírem definição pesquisável. Seus valores e metadados estão preservados
+no PostgreSQL. As demais categorias de omissão do projetor foram zero.
+A leitura desses dados pela ficha continua separada da disponibilidade de filtros.
+A aplicação informa cobertura parcial; XLSX canônico e migração integral
+permanecem desabilitados/não concluídos. O piloto canônico ocupa aproximadamente
+2,5 GB no PostgreSQL e 221 MB de índice, antes de translog, WAL e backups.
+Esses custos motivam a revisão de armazenamento/importação antes da carga maior.
